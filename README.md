@@ -1,6 +1,6 @@
 # erg-onomics
 
-Concept2 PM5 rowing app for Raspberry Pi 3B with 7" touchscreen.
+Concept2 PM5 rowing app for Arduino Uno Q with Waveshare 7" Capacitive Touch Screen LCD (H).
 
 ## Stack
 - Python 3 / bleak (BLE) / Kivy (UI) / SQLite

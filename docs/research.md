@@ -3,7 +3,8 @@
 ## Bottom Line Up Front
 
 **Recommended stack:** `bleak` (Python BLE) + `Kivy` (UI) + `SQLite` (storage)  
-**Platform:** Raspberry Pi 3B, 32-bit Raspberry Pi OS Bookworm, 7" touchscreen  
+**Platform:** Arduino Uno Q (4GB variant), Debian Linux on MPU  
+**Display:** Waveshare 7" Capacitive Touch Screen LCD (H), 1024×600, HDMI + USB touch  
 **Estimated build time:** 85–120 hours across 4 phases  
 
 ---
@@ -73,7 +74,7 @@ pip install bleak
 ```
 
 - Actively maintained (2024 commits), 4.2k GitHub stars
-- Works on Raspberry Pi OS via BlueZ backend
+- Works on Debian Linux via BlueZ backend
 - Full async/await — integrates cleanly with asyncio event loop
 - Best BLE library for Python on Linux
 
@@ -114,7 +115,6 @@ def parse_add_status_1(data: bytearray):
     return speed_mm_s, stroke_rate, stroke_count
 
 async def run():
-    # Scan for PM5
     devices = await BleakScanner.discover(timeout=10)
     pm5 = next((d for d in devices if d.name and "PM5" in d.name), None)
     if not pm5:
@@ -126,91 +126,109 @@ async def run():
             lambda s, d: print(parse_general_status(d)))
         await client.start_notify(ADD_STATUS_UUID,
             lambda s, d: print(parse_add_status_1(d)))
-        await asyncio.sleep(3600)  # run for 1 hour
+        await asyncio.sleep(3600)
 
 asyncio.run(run())
 ```
 
 ---
 
-## 3. Raspberry Pi 3B Constraints
+## 3. Arduino Uno Q Hardware
 
-### Hardware
-- CPU: ARM Cortex-A53 quad-core 1.2GHz
-- RAM: 1GB LPDDR2
-- Bluetooth: BCM43438 — BLE 4.1 ✓
-- **⚠️ WiFi and Bluetooth share the same antenna** — disable WiFi if BLE drops
+### Architecture — Dual Processor
 
-### OS Recommendation
-**32-bit Raspberry Pi OS Bookworm** (not 64-bit)
-- Saves ~66MB RAM vs 64-bit build — critical on 1GB
-- Full package support
-- Use Raspberry Pi Imager → Raspberry Pi OS (32-bit)
+The Uno Q has two independent processors on one board:
 
-### BLE Reliability Fixes
+| Processor | Chip | Role |
+|---|---|---|
+| **MPU** | Qualcomm Dragonwing QRB2210, 4× Cortex-A53 @ 2.0 GHz | Runs Debian Linux, Python, Kivy, bleak |
+| **MCU** | ST STM32U585, Cortex-M33 @ 160 MHz | Zephyr RTOS, Arduino sketches, real-time I/O |
 
-```bash
-# /etc/bluetooth/main.conf — add these lines
-[Policy]
-AutoEnable=true
+This app lives entirely on the MPU side (Linux + Python). The MCU is available for future real-time sensor work if needed, with a Bridge library for inter-processor communication.
 
-# Enable experimental features (required for some BLE notifications)
-# Edit /lib/systemd/system/bluetooth.service
-# Change: ExecStart=/usr/lib/bluetooth/bluetoothd
-# To:     ExecStart=/usr/lib/bluetooth/bluetoothd --experimental
+### Memory & Storage
 
-sudo systemctl daemon-reload
-sudo systemctl restart bluetooth
+| Variant | RAM | Storage |
+|---|---|---|
+| ABX00162 | 2 GB | 16 GB |
+| **ABX00173 (recommended)** | **4 GB** | **32 GB** |
 
-# Disable WiFi to prevent interference
-sudo rfkill block wifi
-# Or permanently in /boot/config.txt:
-# dtoverlay=disable-wifi
-```
+### Connectivity
+- **Bluetooth 5.1** (WCBN3536A module, dedicated antenna — no sharing with WiFi)
+- **WiFi 5** dual-band 2.4/5 GHz (separate from BT, no interference)
+
+### OS
+- MPU: **Debian Linux** (64-bit, upstream kernel support)
+- No custom OS image required — standard Debian package ecosystem
 
 ### RAM Budget at Runtime
 
 | Component | RAM Usage |
 |---|---|
-| Pi OS base | ~200MB |
+| Debian base | ~300MB |
 | Kivy app | ~80–100MB |
 | bleak + asyncio | ~20MB |
 | SQLite | ~5MB |
-| **Total** | **~305–325MB** |
-| **Available headroom** | **~675MB** |
+| **Total** | **~405–425MB** |
+| **Available headroom (4GB variant)** | **~3.6GB** |
 
-Chromium kiosk mode alone uses 400MB+ — ruled out for Pi 3B.
-
-### Screen Recommendation
-- **Official 7" Pi Touchscreen** (800×480) — plug-and-play, DSI connector, no config needed. ~$60–80.
-- **Waveshare 7" HDMI** — 1024×600, HDMI + USB touch, more resolution. ~$55.
-- Avoid screens requiring manual kernel drivers.
+No memory pressure at all. The WiFi/BT antenna sharing issue from Pi 3B does not exist here.
 
 ---
 
-## 4. UI Framework: Kivy (Recommended)
+## 4. Waveshare 7" Capacitive Touch Screen LCD (H)
+
+### Specs
+- **Resolution:** 1024×600
+- **Panel:** IPS, 170° viewing angle
+- **Touch:** 5-point capacitive, USB HID (driver-free on Linux)
+- **Video input:** HDMI
+- **Audio:** 3.5mm jack + 24-pin header
+
+### Connection to Arduino Uno Q
+- HDMI out → display HDMI in
+- USB (touch) → any USB port on the Uno Q
+- No kernel drivers or overlays needed; Linux auto-detects both
+
+### Driver Setup (Linux)
+No driver installation required. Touch is a standard USB HID device. If HDMI resolution doesn't auto-negotiate to 1024×600, force it:
+
+```bash
+# /etc/X11/xorg.conf.d/99-waveshare.conf
+Section "Monitor"
+    Identifier "HDMI-1"
+    Modeline "1024x600_60" 49.00 1024 1072 1168 1312 600 603 613 624 -hsync +vsync
+    Option "PreferredMode" "1024x600_60"
+EndSection
+```
+
+---
+
+## 5. UI Framework: Kivy (Recommended)
 
 ### Why Kivy
 
-| Framework | RAM | Touch | Looks Modern | Pi 3B Safe |
+| Framework | RAM | Touch | Looks Modern | Uno Q Safe |
 |---|---|---|---|---|
 | Pygame | ~30MB | Manual | No | ✓ |
 | **Kivy** | **~80MB** | **Native** | **Yes** | **✓** |
-| PyQt5 | ~120MB | Native | Yes | Marginal |
-| Electron | ~400MB+ | Native | Yes | ✗ |
-| Flask + Chromium | ~500MB+ | Native | Yes | ✗ |
+| PyQt5 | ~120MB | Native | Yes | ✓ |
+| Electron | ~400MB+ | Native | Yes | ✓ (unlike Pi 3B) |
+| Flask + Chromium | ~500MB+ | Native | Yes | ✓ (unlike Pi 3B) |
 
-### Installation on Pi
+With 4GB RAM the Uno Q can handle any of these, but Kivy remains the cleanest fit for a touch-first kiosk app with Python.
+
+### Installation on Uno Q (Debian)
 
 ```bash
-sudo apt-get install -y python3-kivy
-# Or via pip (slower but newer version):
-pip install kivy[base] kivy_examples
+sudo apt-get install -y python3-pip python3-kivy
+# Or via pip for newer version:
+pip3 install kivy[base]
 ```
 
 ### Kivy + bleak Integration Pattern
 
-BLE runs in a background asyncio thread. Kivy's `Clock` polls shared state at 2Hz for UI updates — no blocking, no threading issues.
+BLE runs in a background asyncio thread. Kivy's `Clock` polls shared state at 2Hz — no blocking, no threading issues.
 
 ```python
 from kivy.app import App
@@ -218,16 +236,15 @@ from kivy.clock import Clock
 from kivy.uix.label import Label
 import asyncio, threading
 
-# Shared state dict — written by BLE thread, read by Kivy
 state = {"pace": "--:--", "spm": 0, "watts": 0, "distance": 0}
 
 def ble_thread():
-    asyncio.run(ble_main())  # runs your bleak code
+    asyncio.run(ble_main())
 
 class RowingApp(App):
     def build(self):
         self.label = Label(text="Connecting...")
-        Clock.schedule_interval(self.update_ui, 0.5)  # 2Hz
+        Clock.schedule_interval(self.update_ui, 0.5)
         threading.Thread(target=ble_thread, daemon=True).start()
         return self.label
 
@@ -244,21 +261,21 @@ RowingApp().run()
 
 ---
 
-## 5. App Architecture
+## 6. App Architecture
 
 ### Data Flow
 
 ```
-PM5 (BLE) 
+PM5 (BLE)
     │ notify callbacks (~2Hz)
     ▼
-bleak async loop (background thread)
+bleak async loop (background thread, MPU)
     │ writes to shared `state` dict
     ▼
-Kivy Clock (0.5s interval)
+Kivy Clock (0.5s interval, MPU)
     │ reads from `state` dict
     ▼
-Kivy UI (updates labels/graphs)
+Kivy UI — 1024×600 on Waveshare LCD (HDMI)
     │
     ▼
 SQLite (writes on workout complete)
@@ -291,9 +308,9 @@ import json
 
 @dataclass
 class Interval:
-    type: Literal["time", "distance"]  # "time" or "distance"
+    type: Literal["time", "distance"]
     value: int                          # seconds or meters
-    rest_type: Literal["time", "button"] # fixed rest or button-press
+    rest_type: Literal["time", "button"]
     rest_seconds: int = 0
     target_pace_secs: int = 0          # 0 = no target
     target_watts: int = 0              # 0 = no target
@@ -307,24 +324,6 @@ class Workout:
 
     def to_json(self) -> str:
         return json.dumps(self.__dict__, default=lambda o: o.__dict__)
-
-# Example: 4 × 500m with 2:00 rest
-workout = Workout(
-    name="4x500m Classic",
-    intervals=[
-        Interval(type="distance", value=500, rest_type="time", rest_seconds=120)
-        for _ in range(4)
-    ]
-)
-
-# Example: 8 × 1min on / 20sec off
-workout2 = Workout(
-    name="8x1min Intervals",
-    intervals=[
-        Interval(type="time", value=60, rest_type="time", rest_seconds=20)
-        for _ in range(8)
-    ]
-)
 ```
 
 ### SQLite Schema
@@ -333,7 +332,7 @@ workout2 = Workout(
 CREATE TABLE workouts (
     id INTEGER PRIMARY KEY,
     name TEXT,
-    definition JSON,    -- full Workout object as JSON
+    definition JSON,
     created_at DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -342,19 +341,19 @@ CREATE TABLE sessions (
     workout_id INTEGER REFERENCES workouts(id),
     date DATETIME DEFAULT CURRENT_TIMESTAMP,
     total_distance REAL,
-    total_time INTEGER,   -- seconds
-    avg_pace REAL,        -- sec/500m
+    total_time INTEGER,
+    avg_pace REAL,
     avg_watts REAL,
     avg_spm REAL,
     max_watts INTEGER,
     calories INTEGER,
-    raw_data JSON         -- full stroke-by-stroke data
+    raw_data JSON
 );
 ```
 
 ---
 
-## 6. Custom Workout Builder — Features
+## 7. Custom Workout Builder — Features
 
 ### Must Have (Phase 3)
 - Create intervals: time-based or distance-based
@@ -375,16 +374,16 @@ CREATE TABLE sessions (
 
 ---
 
-## 7. Development Roadmap
+## 8. Development Roadmap
 
 ### Phase 1 — Live Data Display (MVP)
 **Goal:** Connect to PM5, show pace, SPM, watts, distance, elapsed time on screen  
 **Hours:** ~20–25 hrs
 
-- [ ] Set up Pi OS, Kivy, bleak environment
-- [ ] BLE scan and auto-connect to PM5
+- [ ] Set up Debian, Kivy, bleak environment on Uno Q
+- [ ] BLE scan and auto-connect to PM5 (BT 5.1)
 - [ ] Parse General Status + Additional Status 1 characteristics
-- [ ] Basic full-screen Kivy layout with large metrics
+- [ ] Basic full-screen Kivy layout with large metrics (1024×600)
 - [ ] Auto-reconnect on BLE drop
 
 ### Phase 2 — Basic Workout Timer
@@ -421,31 +420,38 @@ CREATE TABLE sessions (
 
 ---
 
-## 8. Pi Setup Checklist
+## 9. Uno Q Setup Checklist
 
 ```bash
-# 1. Flash Pi OS 32-bit Bookworm via Raspberry Pi Imager
+# 1. Flash Debian Linux image via Arduino Uno Q Imager tool
+#    (or follow Arduino's official Getting Started guide)
 
-# 2. Enable SSH, set hostname, WiFi (temporarily for install)
+# 2. Connect display: HDMI cable → Waveshare LCD, USB cable → USB port (touch)
 
-# 3. Install dependencies
+# 3. SSH in, install dependencies
 sudo apt-get update
 sudo apt-get install -y python3-pip python3-kivy bluetooth bluez
 
 # 4. Install Python packages
-pip3 install bleak pm5
+pip3 install bleak
 
-# 5. Fix BLE — enable experimental mode
-sudo nano /lib/systemd/system/bluetooth.service
-# Add --experimental to ExecStart line
-sudo systemctl daemon-reload && sudo systemctl restart bluetooth
+# 5. Verify BLE (BT 5.1 — no experimental flag needed)
+sudo systemctl enable bluetooth
+sudo systemctl start bluetooth
+python3 -c "import asyncio; from bleak import BleakScanner; asyncio.run(BleakScanner.discover(timeout=10))"
 
-# 6. Disable WiFi (after setup complete)
-sudo rfkill block wifi
+# 6. Force display resolution if HDMI doesn't auto-detect 1024×600
+# Create /etc/X11/xorg.conf.d/99-waveshare.conf (see Section 4)
 
 # 7. Kiosk boot — auto-launch app on startup
-# Add to /etc/rc.local before exit 0:
-# su -l pi -c "DISPLAY=:0 python3 /home/pi/rowing_app/main.py &"
+# /etc/systemd/system/rowing.service:
+# [Service]
+# ExecStart=/usr/bin/python3 /home/user/erg-onomics/main.py
+# Environment=DISPLAY=:0
+# Restart=always
+# [Install]
+# WantedBy=graphical.target
+sudo systemctl enable rowing
 
 # 8. Test BLE discovery
 python3 -c "import asyncio; from bleak import BleakScanner; asyncio.run(BleakScanner.discover(timeout=10))"
@@ -455,10 +461,13 @@ python3 -c "import asyncio; from bleak import BleakScanner; asyncio.run(BleakSca
 
 ## Sources
 
+- [Arduino Uno Q Official Page](https://www.arduino.cc/product-uno-q/)
+- [Arduino Uno Q Documentation](https://docs.arduino.cc/hardware/uno-q/)
 - [Concept2 Developer Page](https://www.concept2.com/support/software-development)
 - [PM5 BLE Interface Definition](http://www.concept2.cn/files/pdf/us/monitors/PM5_BluetoothSmartInterfaceDefinition.pdf)
 - [ergarcade/pm5-base (GitHub)](https://github.com/ergarcade/pm5-base)
-- [pROWess — Pi + bleak reference (GitHub)](https://github.com/janick/pROWess)
+- [pROWess — bleak reference (GitHub)](https://github.com/janick/pROWess)
 - [openrowingmonitor (GitHub)](https://github.com/laberning/openrowingmonitor)
 - [bleak BLE library (GitHub)](https://github.com/hbldh/bleak)
-- [Kivy for Pi Touchscreen (element14)](https://community.element14.com/products/raspberry-pi/b/blog/posts/essential-raspberry-pi-peripherals-3-the-kivy-framework-for-small-display-and-touch-screens)
+- [Waveshare 7" Capacitive Touch LCD (H)](https://www.waveshare.com/7inch-hdmi-lcd-h.htm)
+- [Waveshare Wiki](https://www.waveshare.com/wiki/7inch_HDMI_LCD_(H)_(with_case))
