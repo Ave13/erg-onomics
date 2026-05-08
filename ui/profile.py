@@ -1,10 +1,11 @@
 from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
-from kivy.uix.textinput import TextInput
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 
 from ble.pm5 import save_user_profile, state
+from ui.keyboard import BigKeyboard
 
 
 def _row(label_text, hint):
@@ -59,26 +60,48 @@ def build_profile_popup(on_save=None):
     )
     content.add_widget(err)
 
+    def _on_key(char):
+        i = active[0]
+        if char == "\b":
+            values[i] = values[i][:-1]
+        elif char == "\n":
+            _select((i + 1) % len(labels))
+            return
+        else:
+            values[i] += char
+        field_btns[i].text = values[i] or "tap to enter"
+
+    content.add_widget(BigKeyboard(on_key=_on_key))
+
+    save_btn = Button(text="Save", size_hint_y=None, height=64, font_size="22sp")
+    content.add_widget(save_btn)
+
     popup = Popup(
         title="Your Profile",
         content=content,
-        size_hint=(0.88, 0.72),
+        size_hint=(1, 1),
         auto_dismiss=False,
     )
 
+    def _select(i):
+        active[0] = i
+        for j, b in enumerate(field_btns):
+            b.background_color = _ACTIVE_COLOR if j == i else _INACTIVE_COLOR
+
+    _select(0)
+
     def _save(_):
-        name = name_in.text.strip()
+        name = values[0].strip()
         try:
-            weight = float(weight_in.text.strip())
-            height = float(height_in.text.strip())
+            weight = float(values[1].strip())
+            height = float(values[2].strip())
         except ValueError:
             err.text = "Weight and height must be numbers."
             return
         if weight <= 0 or height <= 0:
-            err.text = "Weight and height must be greater than zero."
+            err.text = "Weight and height must be > 0."
             return
-
-        dob = dob_in.text.strip() or None
+        dob = values[3].strip() or None
         result = save_user_profile(name, weight, height, dob)
         if result is None:
             err.text = "Could not save — check storage."
@@ -89,6 +112,4 @@ def build_profile_popup(on_save=None):
 
     save_btn = Button(text="Save", size_hint_y=None, height=56)
     save_btn.bind(on_press=_save)
-    content.add_widget(save_btn)
-
     return popup
