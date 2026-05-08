@@ -31,6 +31,7 @@ state = {
     "session_active": False,
     "session_paused": False,
     "session_prs": [],
+    "target_pace_sec": None,  # target /500m in seconds; None = no target
     # user profile
     "user_id": None,
     "user_name": "",
