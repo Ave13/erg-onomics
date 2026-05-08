@@ -41,6 +41,8 @@ state = {
 
 _stroke_times = collections.deque(maxlen=10)
 _STROKE_STALE_SECS = 10
+_EMA_ALPHA = 0.25          # smoothing factor for interval EMA
+_ema_interval_secs = None  # exponential moving average of inter-stroke interval
 
 
 def speed_to_pace(speed_mm_s):
@@ -58,14 +60,11 @@ def pace_to_watts(pace_sec):
 
 
 def _calc_spm():
-    if len(_stroke_times) < 2:
+    if not _stroke_times or _ema_interval_secs is None:
         return "--"
     if time.monotonic() - _stroke_times[-1] > _STROKE_STALE_SECS:
         return "--"
-    span = _stroke_times[-1] - _stroke_times[0]
-    if span <= 0:
-        return "--"
-    return round((len(_stroke_times) - 1) / span * 60)
+    return round(60 / _ema_interval_secs)
 
 
 def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
@@ -221,6 +220,8 @@ def parse_general_status(data):
     prev_ws = state["workout_state"]
     state["workout_state"] = workout_state
     if workout_state == 0 and prev_ws != 0:
+        global _ema_interval_secs
+        _ema_interval_secs = None
         _stroke_times.clear()
         state["spm"] = "--"
         state["interval"] = "--"
@@ -263,6 +264,14 @@ def parse_stroke_data(data):
         interval = now - _stroke_times[-1]
         state["interval"] = f"{interval:.2f}s"
     _stroke_times.append(now)
+
+    global _ema_interval_secs
+    if interval is not None:
+        if _ema_interval_secs is None:
+            _ema_interval_secs = interval
+        else:
+            _ema_interval_secs = _EMA_ALPHA * interval + (1 - _EMA_ALPHA) * _ema_interval_secs
+
     state["spm"] = _calc_spm()
 
     if interval is not None:
@@ -285,6 +294,9 @@ def parse_workout_summary(data):
 
 
 def start_session(resume_id=None):
+    global _ema_interval_secs
+    _ema_interval_secs = None
+    _stroke_times.clear()
     if resume_id:
         state["session_id"]     = resume_id
         state["session_active"] = True
