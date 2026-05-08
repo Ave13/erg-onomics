@@ -18,9 +18,10 @@ class RowingApp(App):
 
     def update_ui(self, dt):
         self.label.text = (
-            f"Pace:  {state['pace']}\n"
-            f"SPM:   {state['spm']}\n"
-            f"Watts: {state['watts']}\n"
-            f"Dist:  {state['distance']:.0f} m\n"
-            f"Time:  {int(state['elapsed'])} s"
+            f"Pace:     {state['pace']}\n"
+            f"SPM:      {state['spm']}\n"
+            f"Interval: {state['interval']}\n"
+            f"Watts:    {state['watts']}\n"
+            f"Dist:     {state['distance']:.0f} m\n"
+            f"Time:     {int(state['elapsed'])} s"
         )
