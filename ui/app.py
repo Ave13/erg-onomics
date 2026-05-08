@@ -15,6 +15,7 @@ from ble.pm5 import (
     find_resumable_session, has_user_profile,
 )
 from ui.profile import build_profile_popup
+from ui.summary import build_summary_popup
 from ui.widgets import MetricCard, ActionButton
 from ui.theme import BG, LABEL_COLOR, VALUE_COLOR, HR_COLOR, BTN_START, BTN_PAUSE, BTN_END, BTN_NEUTRAL
 
@@ -144,17 +145,19 @@ class RowingApp(App):
             self.pause_btn.text = "Resume"
 
     def _on_end(self, _):
+        sid      = state.get("session_id")
         tcx_path = stop_session()
         self.start_btn.disabled = False
         self.pause_btn.disabled = True
         self.pause_btn.text     = "Pause"
         self.end_btn.disabled   = True
         prs = state.get("session_prs", [])
-        if prs:
-            labels = [_pr_label(r) for r in prs]
-            self._status.text = "PR: " + "  ·  ".join(labels)
-        elif tcx_path:
-            self._status.text = "Session saved"
+        if sid:
+            Clock.schedule_once(
+                lambda dt: build_summary_popup(
+                    sid, prs=prs, on_close=None
+                ).open(), 0.2
+            )
 
     def _on_profile(self, _):
         build_profile_popup(on_save=self._on_profile_saved).open()
