@@ -19,6 +19,8 @@ def _row(label_text, hint):
         hint_text=hint,
         multiline=False,
         size_hint_x=0.68,
+        use_bubble=False,
+        use_handles=False,
     )
     row.add_widget(ti)
     return row, ti
