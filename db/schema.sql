@@ -5,8 +5,18 @@ CREATE TABLE IF NOT EXISTS workouts (
     created_at  DATETIME DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS user_profile (
+    id         INTEGER PRIMARY KEY,
+    name       TEXT,
+    weight_kg  REAL NOT NULL,
+    height_cm  REAL NOT NULL,
+    dob        TEXT,
+    created_at REAL
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
     id             INTEGER PRIMARY KEY,
+    user_id        INTEGER REFERENCES user_profile(id),
     workout_id     INTEGER REFERENCES workouts(id),
     started_at     REAL,
     ended_at       REAL,

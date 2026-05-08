@@ -30,6 +30,13 @@ state = {
     "session_id": None,
     "session_active": False,
     "session_paused": False,
+    # user profile
+    "user_id": None,
+    "user_name": "",
+    "user_weight_kg": None,
+    "user_height_cm": None,
+    "expected_drive_cm": None,   # height_cm * 0.50  — ideal curve x-scale
+    "expected_peak_n": None,     # weight_kg * 4.5   — ideal curve y-scale
 }
 
 _stroke_times = collections.deque(maxlen=10)
@@ -89,6 +96,15 @@ def _init_db():
     try:
         with sqlite3.connect(_DB_PATH) as conn:
             conn.execute(
+                "CREATE TABLE IF NOT EXISTS user_profile ("
+                "id INTEGER PRIMARY KEY, "
+                "name TEXT, "
+                "weight_kg REAL NOT NULL, "
+                "height_cm REAL NOT NULL, "
+                "dob TEXT, "
+                "created_at REAL)"
+            )
+            conn.execute(
                 "CREATE TABLE IF NOT EXISTS stroke_log ("
                 "id INTEGER PRIMARY KEY, "
                 "stroke_num INTEGER NOT NULL, "
@@ -109,6 +125,7 @@ def _init_db():
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS sessions ("
                 "id INTEGER PRIMARY KEY, "
+                "user_id INTEGER, "
                 "workout_id INTEGER, "
                 "started_at REAL, "
                 "ended_at REAL, "
@@ -130,6 +147,7 @@ def _init_db():
                 ("stroke_log", "hr_bpm",             "INTEGER"),
                 ("stroke_log", "work_per_stroke_j",  "REAL"),
                 ("stroke_log", "stroke_distance_m",  "REAL"),
+                ("sessions",   "user_id",            "INTEGER"),
                 ("sessions",   "started_at",         "REAL"),
                 ("sessions",   "ended_at",           "REAL"),
                 ("sessions",   "status",             "TEXT DEFAULT 'active'"),
@@ -143,6 +161,53 @@ def _init_db():
                     pass
     except Exception:
         pass
+
+
+def load_user_profile():
+    """Load the most recent profile into state. Called at startup and after save."""
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            row = conn.execute(
+                "SELECT id, name, weight_kg, height_cm "
+                "FROM user_profile ORDER BY id DESC LIMIT 1"
+            ).fetchone()
+        if row:
+            uid, name, weight_kg, height_cm = row
+            state["user_id"]         = uid
+            state["user_name"]       = name or ""
+            state["user_weight_kg"]  = weight_kg
+            state["user_height_cm"]  = height_cm
+            state["expected_drive_cm"] = round(height_cm * 0.50)
+            state["expected_peak_n"]   = round(weight_kg * 4.5)
+    except Exception:
+        pass
+
+
+def save_user_profile(name, weight_kg, height_cm, dob=None):
+    """Insert a new profile record. Returns the new id, or None on failure."""
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            cur = conn.execute(
+                "INSERT INTO user_profile (name, weight_kg, height_cm, dob, created_at) "
+                "VALUES (?, ?, ?, ?, ?)",
+                (name, float(weight_kg), float(height_cm), dob or None, time.time())
+            )
+            uid = cur.lastrowid
+        load_user_profile()
+        return uid
+    except Exception:
+        return None
+
+
+def has_user_profile():
+    """Return True if at least one profile row exists."""
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            return conn.execute(
+                "SELECT 1 FROM user_profile LIMIT 1"
+            ).fetchone() is not None
+    except Exception:
+        return False
 
 
 def parse_general_status(data):
@@ -228,8 +293,8 @@ def start_session(resume_id=None):
     try:
         with sqlite3.connect(_DB_PATH) as conn:
             cur = conn.execute(
-                "INSERT INTO sessions (started_at, status) VALUES (?, 'active')",
-                (time.time(),)
+                "INSERT INTO sessions (user_id, started_at, status) VALUES (?, ?, 'active')",
+                (state["user_id"], time.time())
             )
             session_id = cur.lastrowid
         state["session_id"]     = session_id
@@ -330,4 +395,5 @@ async def ble_main():
 
 def start_ble():
     _init_db()
+    load_user_profile()
     asyncio.run(ble_main())

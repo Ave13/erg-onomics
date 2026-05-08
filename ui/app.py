@@ -10,8 +10,9 @@ from datetime import datetime
 from ble.pm5 import (
     state, start_ble,
     start_session, stop_session, pause_session, resume_session,
-    find_resumable_session,
+    find_resumable_session, has_user_profile,
 )
+from ui.profile import build_profile_popup
 
 
 class RowingApp(App):
@@ -30,13 +31,15 @@ class RowingApp(App):
         )
 
         btn_row = BoxLayout(size_hint_y=0.12, spacing=4, padding=4)
-        self.start_btn = Button(text="Start")
-        self.pause_btn = Button(text="Pause", disabled=True)
-        self.end_btn   = Button(text="End",   disabled=True)
+        self.start_btn   = Button(text="Start")
+        self.pause_btn   = Button(text="Pause",   disabled=True)
+        self.end_btn     = Button(text="End",     disabled=True)
+        self.profile_btn = Button(text="Profile", size_hint_x=0.55)
         self.start_btn.bind(on_press=self._on_start)
         self.pause_btn.bind(on_press=self._on_pause)
         self.end_btn.bind(on_press=self._on_end)
-        for b in (self.start_btn, self.pause_btn, self.end_btn):
+        self.profile_btn.bind(on_press=self._on_profile)
+        for b in (self.start_btn, self.pause_btn, self.end_btn, self.profile_btn):
             btn_row.add_widget(b)
 
         layout.add_widget(self.label)
@@ -46,9 +49,13 @@ class RowingApp(App):
         Clock.schedule_interval(self.update_ui, 0.5)
         threading.Thread(target=start_ble, daemon=True).start()
 
-        resumable = find_resumable_session()
-        if resumable:
-            Clock.schedule_once(lambda dt: self._show_resume_prompt(resumable), 0.5)
+        # First-run: block until profile is set up
+        if not has_user_profile():
+            Clock.schedule_once(lambda dt: self._show_profile_setup(), 0.3)
+        else:
+            resumable = find_resumable_session()
+            if resumable:
+                Clock.schedule_once(lambda dt: self._show_resume_prompt(resumable), 0.5)
 
         return layout
 
@@ -66,8 +73,9 @@ class RowingApp(App):
             else "Recording" if state["session_active"]
             else "No session"
         )
-        hr = state["hr_bpm"]
-        self.hr_label.text = f"HR: {hr} bpm   {status}"
+        hr   = state["hr_bpm"]
+        name = state.get("user_name") or ""
+        self.hr_label.text = f"{name}  HR: {hr} bpm   {status}"
 
     def _on_start(self, _):
         start_session()
@@ -91,6 +99,23 @@ class RowingApp(App):
         self.end_btn.disabled   = True
         if tcx_path:
             self.hr_label.text = f"Saved: {tcx_path}"
+
+    def _on_profile(self, _):
+        popup = build_profile_popup(on_save=self._on_profile_saved)
+        popup.open()
+
+    def _show_profile_setup(self):
+        popup = build_profile_popup(on_save=self._on_profile_saved)
+        popup.open()
+
+    def _on_profile_saved(self):
+        name = state.get("user_name") or "Rower"
+        w    = state.get("user_weight_kg")
+        h    = state.get("user_height_cm")
+        self.hr_label.text = f"{name}  {w}kg  {h}cm"
+        resumable = find_resumable_session()
+        if resumable:
+            Clock.schedule_once(lambda dt: self._show_resume_prompt(resumable), 0.3)
 
     def _show_resume_prompt(self, row):
         session_id, started_at = row
