@@ -1,5 +1,8 @@
 from kivy.config import Config
 Config.set('kivy', 'keyboard_mode', 'dock')
+Config.set('graphics', 'width', '1024')
+Config.set('graphics', 'height', '768')
+Config.set('graphics', 'fullscreen', 'auto')
 
 from ui.app import RowingApp
 
