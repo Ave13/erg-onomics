@@ -1,6 +1,10 @@
+import time
+
 from kivy.uix.gridlayout import GridLayout
 from kivy.uix.button import Button
 from kivy.uix.boxlayout import BoxLayout
+
+_DEBOUNCE_SECS = 0.35
 
 _ALPHA = [
     list("QWERTYUIOP"),
@@ -26,6 +30,7 @@ class BigKeyboard(BoxLayout):
         self._on_key = on_key
         self._caps = False
         self._layout = "alpha"
+        self._last_press = 0.0
         self._render()
 
     def _render(self):
@@ -55,6 +60,11 @@ class BigKeyboard(BoxLayout):
         return row
 
     def _handle(self, key):
+        now = time.monotonic()
+        if now - self._last_press < _DEBOUNCE_SECS:
+            return
+        self._last_press = now
+
         if key == "⌫":
             self._on_key("\b")
         elif key == "Done":
