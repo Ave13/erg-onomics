@@ -7,57 +7,43 @@ from kivy.uix.popup import Popup
 from ble.pm5 import save_user_profile, state
 from ui.keyboard import BigKeyboard
 
-
-def _row(label_text, hint):
-    row = BoxLayout(size_hint_y=None, height=56, spacing=8)
-    row.add_widget(Label(
-        text=label_text,
-        size_hint_x=0.32,
-        halign="right",
-        valign="middle",
-    ))
-    ti = TextInput(
-        hint_text=hint,
-        multiline=False,
-        size_hint_x=0.68,
-        use_bubble=False,
-        use_handles=False,
-    )
-    row.add_widget(ti)
-    return row, ti
+_ACTIVE_COLOR   = (0.2, 0.6, 1, 1)
+_INACTIVE_COLOR = (0.25, 0.25, 0.25, 1)
 
 
 def build_profile_popup(on_save=None):
-    existing = {
-        "name":      state.get("user_name", ""),
-        "weight_kg": state.get("user_weight_kg"),
-        "height_cm": state.get("user_height_cm"),
-    }
+    values = ["", "", "", ""]
+    v = state.get("user_name", "")
+    if v: values[0] = str(v)
+    v = state.get("user_weight_kg")
+    if v: values[1] = str(v)
+    v = state.get("user_height_cm")
+    if v: values[2] = str(v)
 
-    content = BoxLayout(orientation="vertical", padding=14, spacing=8)
+    active = [0]
+    labels = ["Name", "Weight (kg)", "Height (cm)", "Born"]
 
-    name_row,   name_in   = _row("Name",       "Your name")
-    weight_row, weight_in = _row("Weight (kg)", "e.g. 75")
-    height_row, height_in = _row("Height (cm)", "e.g. 178")
-    dob_row,    dob_in    = _row("Born",        "YYYY-MM-DD  (optional)")
+    content = BoxLayout(orientation="vertical", padding=8, spacing=6)
 
-    if existing["name"]:
-        name_in.text = existing["name"]
-    if existing["weight_kg"]:
-        weight_in.text = str(existing["weight_kg"])
-    if existing["height_cm"]:
-        height_in.text = str(existing["height_cm"])
+    field_grid = GridLayout(cols=2, size_hint_y=None, height=200, spacing=4)
+    field_btns = []
+    for i, lbl_text in enumerate(labels):
+        lbl = Label(text=lbl_text, size_hint_x=0.38, halign="right", valign="middle")
+        lbl.bind(size=lbl.setter("text_size"))
+        field_grid.add_widget(lbl)
+        btn = Button(
+            text=values[i] or "tap to enter",
+            font_size="20sp",
+            halign="left",
+            background_color=_INACTIVE_COLOR,
+        )
+        btn.bind(on_press=lambda b, i=i: _select(i))
+        field_btns.append(btn)
+        field_grid.add_widget(btn)
 
-    for row in (name_row, weight_row, height_row, dob_row):
-        content.add_widget(row)
+    content.add_widget(field_grid)
 
-    err = Label(
-        text="",
-        color=(1, 0.35, 0.35, 1),
-        size_hint_y=None,
-        height=28,
-        halign="center",
-    )
+    err = Label(text="", color=(1, 0.35, 0.35, 1), size_hint_y=None, height=24)
     content.add_widget(err)
 
     def _on_key(char):
@@ -110,6 +96,5 @@ def build_profile_popup(on_save=None):
         if on_save:
             on_save()
 
-    save_btn = Button(text="Save", size_hint_y=None, height=56)
     save_btn.bind(on_press=_save)
     return popup
