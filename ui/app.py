@@ -16,6 +16,7 @@ from ble.pm5 import (
 )
 from ui.profile import build_profile_popup
 from ui.summary import build_summary_popup
+from ui.audio import check_and_cue, reset_cues
 from ui.widgets import MetricCard, ActionButton
 from ui.theme import BG, LABEL_COLOR, VALUE_COLOR, HR_COLOR, BTN_START, BTN_PAUSE, BTN_END, BTN_NEUTRAL
 
@@ -155,6 +156,7 @@ class RowingApp(App):
         root.add_widget(btn_row)
 
         Clock.schedule_interval(self.update_ui, 0.5)
+        Clock.schedule_interval(lambda dt: check_and_cue(), 1.0)
         threading.Thread(target=start_ble, daemon=True).start()
 
         if not has_user_profile():
@@ -201,9 +203,19 @@ class RowingApp(App):
             status_text = "Ready"
 
         name = state.get("user_name") or ""
-        self._status.text = f"{name}   {status_text}" if name else status_text
+        uid  = state.get("user_id")
+        streak_txt = ""
+        if uid and not state["session_active"]:
+            from db.streak import get_streak
+            cur, _ = get_streak(uid)
+            if cur > 1:
+                streak_txt = f"  {cur} day streak"
+
+        parts = [p for p in [name, status_text, streak_txt] if p]
+        self._status.text = "   ".join(parts)
 
     def _on_start(self, _):
+        reset_cues()
         start_session()
         self.start_btn.disabled = True
         self.pause_btn.disabled = False
