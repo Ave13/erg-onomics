@@ -55,6 +55,8 @@ class ActionButton(Button):
     """Flat coloured button with no default Kivy chrome."""
 
     def __init__(self, label, color, **kwargs):
+        self._active_color   = color
+        self._disabled_color = BTN_DISABLED
         super().__init__(
             text=label,
             font_size=FONT_BTN,
@@ -63,8 +65,6 @@ class ActionButton(Button):
             background_color=color,
             **kwargs,
         )
-        self._active_color   = color
-        self._disabled_color = BTN_DISABLED
 
     def on_disabled(self, _instance, disabled):
         self.background_color = self._disabled_color if disabled else self._active_color
