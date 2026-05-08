@@ -19,6 +19,25 @@ from ui.widgets import MetricCard, ActionButton
 from ui.theme import BG, LABEL_COLOR, VALUE_COLOR, HR_COLOR, BTN_START, BTN_PAUSE, BTN_END, BTN_NEUTRAL
 
 
+_PR_NAMES = {
+    "longest_distance": "Distance",
+    "longest_time":     "Time",
+    "best_avg_watts":   "Avg watts",
+    "best_max_watts":   "Peak watts",
+    "best_avg_spm":     "Avg SPM",
+}
+
+
+def _pr_label(record):
+    rtype, old, new = record
+    if rtype.startswith("pace_"):
+        dist = rtype.replace("pace_", "").replace("m", "")
+        mins, secs = divmod(int(new), 60)
+        return f"{dist}m {mins}:{secs:02d}/500m"
+    name = _PR_NAMES.get(rtype, rtype)
+    return f"{name} {new:.0f}"
+
+
 class RowingApp(App):
     def build(self):
         root = BoxLayout(orientation="vertical")
@@ -130,8 +149,12 @@ class RowingApp(App):
         self.pause_btn.disabled = True
         self.pause_btn.text     = "Pause"
         self.end_btn.disabled   = True
-        if tcx_path:
-            self._status.text = f"Saved: {tcx_path}"
+        prs = state.get("session_prs", [])
+        if prs:
+            labels = [_pr_label(r) for r in prs]
+            self._status.text = "PR: " + "  ·  ".join(labels)
+        elif tcx_path:
+            self._status.text = "Session saved"
 
     def _on_profile(self, _):
         build_profile_popup(on_save=self._on_profile_saved).open()

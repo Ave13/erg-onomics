@@ -30,6 +30,7 @@ state = {
     "session_id": None,
     "session_active": False,
     "session_paused": False,
+    "session_prs": [],
     # user profile
     "user_id": None,
     "user_name": "",
@@ -356,11 +357,27 @@ def stop_session():
                  int(max_hr) if max_hr else None,
                  sid)
             )
+        stroke_rows = conn.execute(
+                "SELECT elapsed_secs, speed_mm_s FROM stroke_log "
+                "WHERE session_id=? ORDER BY elapsed_secs", (sid,)
+            ).fetchall()
         state["session_id"]     = None
         state["session_active"] = False
         state["session_paused"] = False
     except Exception:
         return None
+
+    from db.records import check_and_save_records
+    prs = check_and_save_records(sid, state.get("user_id"), {
+        "distance_m":   distance,
+        "elapsed_secs": elapsed,
+        "avg_watts":    avg_watts_val,
+        "max_watts":    max_watts_val,
+        "avg_spm":      avg_spm_val,
+        "stroke_log_rows": stroke_rows,
+    })
+    state["session_prs"] = prs
+
     from db.export import export_tcx
     return export_tcx(sid)
 
