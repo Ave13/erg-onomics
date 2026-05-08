@@ -5,7 +5,6 @@ from kivy.uix.button import Button
 from kivy.uix.popup import Popup
 
 from ble.pm5 import save_user_profile, state
-from ui.keyboard import BigKeyboard
 
 
 def _row(label_text, hint):
@@ -22,24 +21,19 @@ def _row(label_text, hint):
         size_hint_x=0.68,
         use_bubble=False,
         use_handles=False,
-        readonly=True,
     )
     row.add_widget(ti)
     return row, ti
 
 
 def build_profile_popup(on_save=None):
-    """
-    Build a profile entry Popup with a large custom keyboard.
-    on_save() is called after a successful save.
-    """
     existing = {
         "name":      state.get("user_name", ""),
         "weight_kg": state.get("user_weight_kg"),
         "height_cm": state.get("user_height_cm"),
     }
 
-    content = BoxLayout(orientation="vertical", padding=10, spacing=6)
+    content = BoxLayout(orientation="vertical", padding=14, spacing=8)
 
     name_row,   name_in   = _row("Name",       "Your name")
     weight_row, weight_in = _row("Weight (kg)", "e.g. 75")
@@ -53,9 +47,6 @@ def build_profile_popup(on_save=None):
     if existing["height_cm"]:
         height_in.text = str(existing["height_cm"])
 
-    fields = [name_in, weight_in, height_in, dob_in]
-    _active = [name_in]  # currently focused field
-
     for row in (name_row, weight_row, height_row, dob_row):
         content.add_widget(row)
 
@@ -63,45 +54,15 @@ def build_profile_popup(on_save=None):
         text="",
         color=(1, 0.35, 0.35, 1),
         size_hint_y=None,
-        height=24,
+        height=28,
         halign="center",
     )
     content.add_widget(err)
 
-    def _on_key(char):
-        ti = _active[0]
-        if char == "\b":
-            ti.text = ti.text[:-1]
-        elif char == "\n":
-            idx = fields.index(ti)
-            if idx + 1 < len(fields):
-                _active[0] = fields[idx + 1]
-                _highlight()
-        else:
-            ti.text += char
-
-    def _highlight():
-        for f in fields:
-            f.background_color = (1, 1, 1, 1)
-        _active[0].background_color = (0.85, 0.95, 1, 1)
-
-    def _focus(ti):
-        _active[0] = ti
-        _highlight()
-
-    for f in fields:
-        f.bind(on_touch_down=lambda widget, touch, f=f:
-               _focus(f) if widget.collide_point(*touch.pos) else None)
-
-    _highlight()
-
-    keyboard = BigKeyboard(on_key=_on_key, size_hint_y=None)
-    content.add_widget(keyboard)
-
     popup = Popup(
         title="Your Profile",
         content=content,
-        size_hint=(1, 1),
+        size_hint=(0.88, 0.72),
         auto_dismiss=False,
     )
 
