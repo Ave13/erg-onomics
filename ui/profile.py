@@ -9,7 +9,7 @@ from kivy.graphics import Color, Rectangle
 from ble.pm5 import save_user_profile, state
 from ui.keyboard import BigKeyboard
 from ui.spinners import SpinDial, DIAL_H, _MONTHS
-from ui.theme import BG, CARD_BG, LABEL_COLOR, BTN_START, BTN_NEUTRAL
+from ui.theme import BG, CARD_BG, LABEL_COLOR, BTN_START, BTN_NEUTRAL, BTN_END
 
 
 def _section_label(text):
@@ -209,6 +209,23 @@ def build_profile_popup(on_save=None):
     content.add_widget(dob_row)
 
     content.add_widget(err)
+
+    # ── training plan link ────────────────────────────────────────
+    plan_btn = Button(
+        text="Training Plan",
+        font_size="20sp",
+        size_hint_y=None,
+        height=58,
+        background_normal="",
+        background_color=BTN_NEUTRAL,
+    )
+
+    def _open_plan(_):
+        from ui.plan import build_plan_popup
+        build_plan_popup().open()
+
+    plan_btn.bind(on_press=_open_plan)
+    content.add_widget(plan_btn)
 
     # ── save ─────────────────────────────────────────────────────
     save_btn = Button(
