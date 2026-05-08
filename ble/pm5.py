@@ -1,10 +1,35 @@
 import asyncio
+import collections
+import sqlite3
+import time
+
 from bleak import BleakClient, BleakScanner
 
 ROWING_STATUS_UUID = "CE060031-43E5-11E4-916C-0800200C9A66"
 ADD_STATUS_UUID    = "CE060032-43E5-11E4-916C-0800200C9A66"
+STROKE_DATA_UUID   = "CE060035-43E5-11E4-916C-0800200C9A66"
 
-state = {"pace": "--:--", "spm": 0, "watts": 0, "distance": 0.0, "elapsed": 0.0}
+_DB_PATH = "rowing.db"
+
+state = {
+    "pace": "--:--",
+    "spm": "--",
+    "interval": "--",
+    "drive_time": "--",
+    "recovery": "--",
+    "drive_length": "--",
+    "watts": 0,
+    "distance": 0.0,
+    "elapsed": 0.0,
+    "workout_state": 0,
+    "stroke_count": 0,
+    "speed_mm_s": 0,
+}
+
+_stroke_times = collections.deque(maxlen=10)
+_prev_stroke_count = 0
+_STROKE_STALE_SECS = 10
+
 
 def speed_to_pace(speed_mm_s):
     if speed_mm_s == 0:
@@ -13,25 +38,132 @@ def speed_to_pace(speed_mm_s):
     pace_sec = 500 / speed_m_s
     return f"{int(pace_sec // 60)}:{int(pace_sec % 60):02d}"
 
+
 def pace_to_watts(pace_sec):
     if pace_sec == 0:
         return 0
     return round(2.80 / (pace_sec / 60) ** 3)
 
+
+def _calc_spm():
+    if len(_stroke_times) < 2:
+        return "--"
+    if time.monotonic() - _stroke_times[-1] > _STROKE_STALE_SECS:
+        return "--"
+    span = _stroke_times[-1] - _stroke_times[0]
+    if span <= 0:
+        return "--"
+    return round((len(_stroke_times) - 1) / span * 60)
+
+
+def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
+                drive_time_secs=None, recovery_secs=None,
+                drive_length_cm=None, avg_force_n=None, peak_force_n=None):
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            conn.execute(
+                "INSERT INTO stroke_log "
+                "(stroke_num, elapsed_secs, interval_secs, speed_mm_s, logged_at, "
+                " drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (stroke_num, elapsed_secs, round(interval_secs, 4), speed_mm_s, time.time(),
+                 drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n),
+            )
+    except Exception:
+        pass
+
+
+def _init_db():
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS stroke_log ("
+                "id INTEGER PRIMARY KEY, "
+                "stroke_num INTEGER NOT NULL, "
+                "elapsed_secs REAL NOT NULL, "
+                "interval_secs REAL NOT NULL, "
+                "speed_mm_s INTEGER NOT NULL, "
+                "logged_at REAL NOT NULL, "
+                "drive_time_secs REAL, "
+                "recovery_secs REAL, "
+                "drive_length_cm INTEGER, "
+                "avg_force_n REAL, "
+                "peak_force_n REAL)"
+            )
+            for col, typedef in [
+                ("drive_time_secs", "REAL"),
+                ("recovery_secs",   "REAL"),
+                ("drive_length_cm", "INTEGER"),
+                ("avg_force_n",     "REAL"),
+                ("peak_force_n",    "REAL"),
+            ]:
+                try:
+                    conn.execute(f"ALTER TABLE stroke_log ADD COLUMN {col} {typedef}")
+                except Exception:
+                    pass
+    except Exception:
+        pass
+
+
 def parse_general_status(data):
+    if len(data) < 7:
+        return
     elapsed = int.from_bytes(data[0:3], "little") / 100
     distance = int.from_bytes(data[3:6], "little") / 10
+    workout_state = data[6]
     state["elapsed"] = elapsed
     state["distance"] = distance
+    prev_ws = state["workout_state"]
+    state["workout_state"] = workout_state
+    if workout_state == 0 and prev_ws != 0:
+        _stroke_times.clear()
+        state["spm"] = "--"
+        state["interval"] = "--"
+        state["drive_time"] = "--"
+        state["recovery"] = "--"
+        state["drive_length"] = "--"
+
 
 def parse_add_status_1(data):
+    if len(data) < 2:
+        return
     speed_mm_s = int.from_bytes(data[0:2], "little")
-    spm = data[3]
     pace_str = speed_to_pace(speed_mm_s)
     pace_sec = (500 / (speed_mm_s / 1000)) if speed_mm_s > 0 else 0
-    state["pace"] = pace_str
-    state["spm"] = spm
-    state["watts"] = pace_to_watts(pace_sec)
+    state["pace"]      = pace_str
+    state["watts"]     = pace_to_watts(pace_sec)
+    state["speed_mm_s"] = speed_mm_s
+
+
+def parse_stroke_data(data):
+    if len(data) < 20:
+        return
+    drive_length_cm = data[6]
+    drive_time_secs = data[7] / 100
+    recovery_secs   = int.from_bytes(data[8:10], "little") / 100
+    peak_force_n    = int.from_bytes(data[12:14], "little") / 10
+    avg_force_n     = int.from_bytes(data[14:16], "little") / 10
+    stroke_count    = int.from_bytes(data[18:20], "little")
+
+    state["drive_time"]   = f"{drive_time_secs:.2f}s"
+    state["recovery"]     = f"{recovery_secs:.2f}s"
+    state["drive_length"] = f"{drive_length_cm}cm"
+    state["stroke_count"] = stroke_count
+
+    now = time.monotonic()
+    interval = None
+    if _stroke_times:
+        interval = now - _stroke_times[-1]
+        state["interval"] = f"{interval:.2f}s"
+    _stroke_times.append(now)
+    state["spm"] = _calc_spm()
+
+    if interval is not None:
+        _log_stroke(
+            stroke_count, state["elapsed"], interval, state["speed_mm_s"],
+            drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n,
+        )
+
 
 async def ble_main():
     while True:
@@ -43,11 +175,14 @@ async def ble_main():
         try:
             async with BleakClient(pm5.address) as client:
                 await client.start_notify(ROWING_STATUS_UUID, lambda s, d: parse_general_status(d))
-                await client.start_notify(ADD_STATUS_UUID, lambda s, d: parse_add_status_1(d))
+                await client.start_notify(ADD_STATUS_UUID,    lambda s, d: parse_add_status_1(d))
+                await client.start_notify(STROKE_DATA_UUID,   lambda s, d: parse_stroke_data(d))
                 while client.is_connected:
                     await asyncio.sleep(1)
         except Exception:
             await asyncio.sleep(3)
 
+
 def start_ble():
+    _init_db()
     asyncio.run(ble_main())
