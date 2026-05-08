@@ -20,6 +20,64 @@ from ui.widgets import MetricCard, ActionButton
 from ui.theme import BG, LABEL_COLOR, VALUE_COLOR, HR_COLOR, BTN_START, BTN_PAUSE, BTN_END, BTN_NEUTRAL
 
 
+def _build_pace_target_popup():
+    """Popup with two SpinDials (min + sec) to set /500m target pace."""
+    from ui.spinners import SpinDial, DIAL_H
+    cur = state.get("target_pace_sec")
+    cur_m = int(cur // 60) if cur else 1
+    cur_s = int(cur %  60) if cur else 45
+
+    content = BoxLayout(orientation="vertical", padding=12, spacing=8)
+    with content.canvas.before:
+        Color(*BG)
+        _bg = Rectangle(pos=content.pos, size=content.size)
+    content.bind(pos=lambda *a: setattr(_bg, "pos", content.pos),
+                 size=lambda *a: setattr(_bg, "size", content.size))
+
+    content.add_widget(Label(
+        text="Target pace per 500m",
+        font_size="20sp",
+        color=LABEL_COLOR,
+        size_hint_y=None,
+        height=36,
+        halign="center",
+    ))
+
+    dial_row = BoxLayout(size_hint_y=None, height=DIAL_H, spacing=8)
+    min_dial = SpinDial(values=list(range(1, 10)), initial=cur_m - 1,
+                        fmt=lambda v: f"{v} min", wrap=False, size_hint_x=0.5)
+    sec_dial = SpinDial(values=list(range(0, 60)), initial=cur_s,
+                        fmt=lambda v: f"{v:02d} sec", wrap=True, size_hint_x=0.5)
+    dial_row.add_widget(min_dial)
+    dial_row.add_widget(sec_dial)
+    content.add_widget(dial_row)
+
+    popup = Popup(title="Pace Target", content=content,
+                  size_hint=(0.7, 0.55), auto_dismiss=False)
+
+    btn_row = BoxLayout(size_hint_y=None, height=64, spacing=8)
+    btn_row.add_widget(Button(
+        text="Clear",
+        font_size="20sp",
+        background_normal="",
+        background_color=BTN_NEUTRAL,
+        on_press=lambda _: (state.__setitem__("target_pace_sec", None), popup.dismiss()),
+    ))
+    btn_row.add_widget(Button(
+        text="Set",
+        font_size="20sp",
+        background_normal="",
+        background_color=BTN_START,
+        on_press=lambda _: (
+            state.__setitem__("target_pace_sec",
+                              min_dial.value * 60 + sec_dial.value),
+            popup.dismiss()
+        ),
+    ))
+    content.add_widget(btn_row)
+    return popup
+
+
 _PR_NAMES = {
     "longest_distance": "Distance",
     "longest_time":     "Time",
@@ -79,14 +137,17 @@ class RowingApp(App):
         self.start_btn   = ActionButton("Start",   BTN_START)
         self.pause_btn   = ActionButton("Pause",   BTN_PAUSE,  disabled=True)
         self.end_btn     = ActionButton("End",     BTN_END,    disabled=True)
+        self.target_btn  = ActionButton("Target",  BTN_NEUTRAL, size_hint_x=0.6)
         self.profile_btn = ActionButton("Profile", BTN_NEUTRAL, size_hint_x=0.6)
 
         self.start_btn.bind(on_press=self._on_start)
         self.pause_btn.bind(on_press=self._on_pause)
         self.end_btn.bind(on_press=self._on_end)
+        self.target_btn.bind(on_press=self._on_target)
         self.profile_btn.bind(on_press=self._on_profile)
 
-        for b in (self.start_btn, self.pause_btn, self.end_btn, self.profile_btn):
+        for b in (self.start_btn, self.pause_btn, self.end_btn,
+                  self.target_btn, self.profile_btn):
             btn_row.add_widget(b)
 
         root.add_widget(grid)
@@ -110,7 +171,19 @@ class RowingApp(App):
         self._bg_rect.size = instance.size
 
     def update_ui(self, dt):
-        self._pace.set_value(state["pace"])
+        pace_color = VALUE_COLOR
+        target     = state.get("target_pace_sec")
+        speed      = state.get("speed_mm_s", 0)
+        if target and speed > 0:
+            current_pace = 500 / (speed / 1000)
+            if current_pace <= target * 0.98:
+                pace_color = (0.15, 0.85, 0.45, 1)   # green — faster than target
+            elif current_pace <= target * 1.02:
+                pace_color = VALUE_COLOR               # white — on target (±2%)
+            else:
+                pace_color = (1.0, 0.35, 0.25, 1)    # red — slower than target
+
+        self._pace.set_value(state["pace"], color=pace_color)
         self._watts.set_value(state["watts"])
         self._spm.set_value(state["spm"])
         self._dist.set_value(f"{state['distance']:.0f} m")
@@ -158,6 +231,9 @@ class RowingApp(App):
                     sid, prs=prs, on_close=None
                 ).open(), 0.2
             )
+
+    def _on_target(self, _):
+        _build_pace_target_popup().open()
 
     def _on_profile(self, _):
         build_profile_popup(on_save=self._on_profile_saved).open()
