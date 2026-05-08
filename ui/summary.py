@@ -6,10 +6,13 @@ from kivy.uix.gridlayout import GridLayout
 from kivy.uix.label import Label
 from kivy.uix.button import Button
 from kivy.uix.popup import Popup
+from kivy.uix.scrollview import ScrollView
 from kivy.uix.widget import Widget
 from kivy.graphics import Color, Line, Rectangle
 
-from ui.theme import BG, CARD_BG, LABEL_COLOR, VALUE_COLOR, HR_COLOR, BTN_START, BTN_NEUTRAL
+from db.strive import calculate_strive_score, ZONE_COLORS, ZONE_NAMES, estimate_max_hr
+from db.streak import get_streak
+from ui.theme import BG, CARD_BG, LABEL_COLOR, VALUE_COLOR, HR_COLOR, BTN_NEUTRAL
 
 _DB_PATH = "rowing.db"
 
@@ -45,72 +48,90 @@ def _stat_cell(label, value, value_color=None):
         rect = Rectangle(pos=box.pos, size=box.size)
     box.bind(pos=lambda *a: setattr(rect, "pos", box.pos),
              size=lambda *a: setattr(rect, "size", box.size))
-
     lbl = Label(text=label.upper(), font_size="14sp", color=LABEL_COLOR,
                 halign="center", valign="bottom", size_hint_y=0.38)
     lbl.bind(size=lbl.setter("text_size"))
-
     val = Label(text=str(value), font_size="30sp", bold=True,
                 color=value_color or VALUE_COLOR,
                 halign="center", valign="middle", size_hint_y=0.62)
     val.bind(size=val.setter("text_size"))
-
     box.add_widget(lbl)
     box.add_widget(val)
     return box
 
 
-class _PaceGraph(Widget):
-    """Simple line chart of pace (speed_mm_s) over elapsed time."""
+class _LineGraph(Widget):
+    """Generic multi-series line graph."""
 
-    def __init__(self, rows, **kwargs):
+    def __init__(self, series, **kwargs):
+        # series: list of (label, color, [(x,y), ...])
         super().__init__(**kwargs)
-        self._rows = rows
+        self._series = series
         self.bind(pos=self._draw, size=self._draw)
 
     def _draw(self, *_):
         self.canvas.clear()
-        rows = self._rows
-        if not rows or len(rows) < 2:
+        if not self._series:
             return
-
         w, h   = self.size
         x0, y0 = self.pos
+        pad    = 10
 
-        speeds  = [r[1] for r in rows if r[1] > 0]
-        if not speeds:
+        all_x = [p[0] for _, _, pts in self._series for p in pts]
+        all_y = [p[1] for _, _, pts in self._series for p in pts if p[1] > 0]
+        if not all_x or not all_y:
             return
-        t_min   = rows[0][0]
-        t_max   = rows[-1][0]
-        s_min   = min(speeds) * 0.95
-        s_max   = max(speeds) * 1.05
-        t_span  = t_max - t_min or 1
-        s_span  = s_max - s_min or 1
 
-        pad = 12
+        x_min, x_max = min(all_x), max(all_x)
+        y_min, y_max = min(all_y) * 0.9, max(all_y) * 1.1
+        x_span = x_max - x_min or 1
+        y_span = y_max - y_min or 1
 
-        def _px(elapsed, speed):
-            nx = (elapsed - t_min) / t_span
-            ny = (speed   - s_min) / s_span
-            return x0 + pad + nx * (w - 2 * pad), y0 + pad + ny * (h - 2 * pad)
+        def _px(x, y):
+            return (x0 + pad + (x - x_min) / x_span * (w - 2 * pad),
+                    y0 + pad + (y - y_min) / y_span * (h - 2 * pad))
 
         with self.canvas:
-            # background
             Color(*CARD_BG)
             Rectangle(pos=self.pos, size=self.size)
+            for _lbl, color, pts in self._series:
+                Color(*color)
+                coords = []
+                for x, y in pts:
+                    if y > 0:
+                        px, py = _px(x, y)
+                        coords += [px, py]
+                if len(coords) >= 4:
+                    Line(points=coords, width=2)
 
-            # pace line
-            Color(0.2, 0.75, 0.55, 1)
-            pts = []
-            for elapsed, speed in rows:
-                if speed > 0:
-                    px, py = _px(elapsed, speed)
-                    pts += [px, py]
-            if len(pts) >= 4:
-                Line(points=pts, width=2)
 
-            # axis labels
-            Color(*LABEL_COLOR)
+class _ZoneBars(Widget):
+    """Horizontal stacked zone-time bar."""
+
+    def __init__(self, zone_times, **kwargs):
+        super().__init__(**kwargs)
+        self._zone_times = zone_times
+        self.bind(pos=self._draw, size=self._draw)
+
+    def _draw(self, *_):
+        self.canvas.clear()
+        total = sum(self._zone_times) or 1
+        w, h  = self.size
+        x0, y0 = self.pos
+        pad   = 4
+        bar_h = max(h - pad * 2, 20)
+        x     = x0 + pad
+
+        with self.canvas:
+            Color(*CARD_BG)
+            Rectangle(pos=self.pos, size=self.size)
+            for i, (t, color) in enumerate(zip(self._zone_times, ZONE_COLORS)):
+                seg_w = (t / total) * (w - pad * 2)
+                if seg_w < 1:
+                    continue
+                Color(*color)
+                Rectangle(pos=(x, y0 + pad), size=(seg_w, bar_h))
+                x += seg_w
 
 
 def _load_session(session_id):
@@ -119,92 +140,154 @@ def _load_session(session_id):
             sess = conn.execute(
                 "SELECT started_at, ended_at, total_distance, total_time, "
                 "       avg_pace, avg_watts, avg_spm, max_watts, calories, "
-                "       avg_hr, max_hr "
+                "       avg_hr, max_hr, user_id "
                 "FROM sessions WHERE id=?", (session_id,)
             ).fetchone()
-            rows = conn.execute(
+            speed_rows = conn.execute(
                 "SELECT elapsed_secs, speed_mm_s FROM stroke_log "
                 "WHERE session_id=? ORDER BY elapsed_secs", (session_id,)
             ).fetchall()
-        return sess, rows
+            force_rows = conn.execute(
+                "SELECT elapsed_secs, avg_force_n, peak_force_n FROM stroke_log "
+                "WHERE session_id=? AND avg_force_n IS NOT NULL "
+                "ORDER BY elapsed_secs", (session_id,)
+            ).fetchall()
+            dob_row = conn.execute(
+                "SELECT dob FROM user_profile WHERE id=("
+                "SELECT user_id FROM sessions WHERE id=?)", (session_id,)
+            ).fetchone()
+        return sess, speed_rows, force_rows, (dob_row[0] if dob_row else None)
     except Exception:
-        return None, []
+        return None, [], [], None
 
 
 def build_summary_popup(session_id, prs=None, on_close=None):
-    sess, stroke_rows = _load_session(session_id)
+    sess, speed_rows, force_rows, dob = _load_session(session_id)
 
-    content = BoxLayout(orientation="vertical", padding=8, spacing=6)
-    with content.canvas.before:
+    # Scrollable content so everything fits on 768px
+    inner = BoxLayout(orientation="vertical", padding=8, spacing=6,
+                      size_hint_y=None)
+    inner.bind(minimum_height=inner.setter("height"))
+
+    with inner.canvas.before:
         Color(*BG)
-        _bg = Rectangle(pos=content.pos, size=content.size)
-    content.bind(pos=lambda *a: setattr(_bg, "pos", content.pos),
-                 size=lambda *a: setattr(_bg, "size", content.size))
+        _bg = Rectangle(pos=inner.pos, size=inner.size)
+    inner.bind(pos=lambda *a: setattr(_bg, "pos", inner.pos),
+               size=lambda *a: setattr(_bg, "size", inner.size))
+
+    scroll = ScrollView(do_scroll_x=False)
+    scroll.add_widget(inner)
+
+    root = BoxLayout(orientation="vertical", padding=0, spacing=0)
+    with root.canvas.before:
+        Color(*BG)
+        _rbg = Rectangle(pos=root.pos, size=root.size)
+    root.bind(pos=lambda *a: setattr(_rbg, "pos", root.pos),
+              size=lambda *a: setattr(_rbg, "size", root.size))
 
     if not sess:
-        content.add_widget(Label(text="No session data.", color=LABEL_COLOR))
+        inner.add_widget(Label(text="No session data.", color=LABEL_COLOR,
+                               size_hint_y=None, height=60))
     else:
         (started_at, ended_at, dist, elapsed, avg_pace,
-         avg_watts, avg_spm, max_watts, calories, avg_hr, max_hr) = sess
-
-        start_str = (datetime.fromtimestamp(started_at).strftime("%H:%M")
-                     if started_at else "--")
+         avg_watts, avg_spm, max_watts, calories, avg_hr, max_hr,
+         user_id) = sess
 
         # ── stats grid ────────────────────────────────────────────
-        grid = GridLayout(cols=3, rows=2, spacing=4, size_hint_y=0.38)
-        grid.add_widget(_stat_cell("Distance",  f"{dist:.0f} m"         if dist    else "--"))
+        grid = GridLayout(cols=3, rows=2, spacing=4,
+                          size_hint_y=None, height=200)
+        grid.add_widget(_stat_cell("Distance",  f"{dist:.0f} m"      if dist      else "--"))
         grid.add_widget(_stat_cell("Time",      _time_str(elapsed)))
         grid.add_widget(_stat_cell("Avg Pace",  _pace_str(avg_pace)))
-        grid.add_widget(_stat_cell("Avg Watts", f"{avg_watts:.0f} W"    if avg_watts else "--"))
-        grid.add_widget(_stat_cell("Avg SPM",   f"{avg_spm:.0f}"        if avg_spm   else "--"))
-        hr_val = f"{avg_hr:.0f}" if avg_hr else "--"
-        grid.add_widget(_stat_cell("Avg HR", hr_val, value_color=HR_COLOR if avg_hr else None))
-        content.add_widget(grid)
+        grid.add_widget(_stat_cell("Avg Watts", f"{avg_watts:.0f} W" if avg_watts else "--"))
+        grid.add_widget(_stat_cell("Avg SPM",   f"{avg_spm:.0f}"     if avg_spm   else "--"))
+        hr_col = HR_COLOR if avg_hr else None
+        grid.add_widget(_stat_cell("Avg HR",    f"{avg_hr:.0f}"      if avg_hr    else "--",
+                                   value_color=hr_col))
+        inner.add_widget(grid)
 
         # ── pace graph ────────────────────────────────────────────
-        graph = _PaceGraph(stroke_rows, size_hint_y=0.35)
-        content.add_widget(graph)
+        if speed_rows:
+            inner.add_widget(Label(text="PACE", font_size="14sp", color=LABEL_COLOR,
+                                   size_hint_y=None, height=22, halign="left"))
+            pace_series = [("Pace", (0.2, 0.75, 0.55, 1),
+                            [(r[0], r[1]) for r in speed_rows if r[1] > 0])]
+            inner.add_widget(_LineGraph(pace_series, size_hint_y=None, height=130))
+
+        # ── force curve trend ─────────────────────────────────────
+        if force_rows:
+            inner.add_widget(Label(text="FORCE", font_size="14sp", color=LABEL_COLOR,
+                                   size_hint_y=None, height=22, halign="left"))
+            force_series = [
+                ("Avg",  (0.25, 0.55, 0.95, 1), [(r[0], r[1]) for r in force_rows]),
+                ("Peak", (0.95, 0.45, 0.15, 1), [(r[0], r[2]) for r in force_rows]),
+            ]
+            inner.add_widget(_LineGraph(force_series, size_hint_y=None, height=120))
+
+        # ── strive score ──────────────────────────────────────────
+        max_hr_est = estimate_max_hr(dob) if dob else (max_hr or 185)
+        score, zone_times = calculate_strive_score(session_id, max_hr_est)
+        if score > 0:
+            inner.add_widget(Label(text="STRIVE SCORE", font_size="14sp",
+                                   color=LABEL_COLOR, size_hint_y=None, height=22,
+                                   halign="left"))
+            score_row = BoxLayout(size_hint_y=None, height=44, spacing=8)
+            score_row.add_widget(Label(
+                text=f"{score:.0f}",
+                font_size="32sp", bold=True, color=(0.95, 0.82, 0.12, 1),
+                size_hint_x=0.2, halign="center",
+            ))
+            score_row.add_widget(_ZoneBars(zone_times, size_hint_x=0.8))
+            inner.add_widget(score_row)
+
+            zone_row = BoxLayout(size_hint_y=None, height=22, spacing=4)
+            for name, t, color in zip(ZONE_NAMES, zone_times, ZONE_COLORS):
+                m, s = divmod(t, 60)
+                lbl = Label(text=f"{name} {m}:{s:02d}",
+                            font_size="13sp", color=color, halign="center")
+                zone_row.add_widget(lbl)
+            inner.add_widget(zone_row)
+
+        # ── streak ────────────────────────────────────────────────
+        if user_id:
+            cur_streak, longest = get_streak(user_id)
+            if cur_streak > 0:
+                streak_txt = (f"  {cur_streak} day streak"
+                              + (f"  ·  longest {longest}" if longest > cur_streak else ""))
+                inner.add_widget(Label(
+                    text=streak_txt,
+                    font_size="18sp",
+                    color=(0.95, 0.82, 0.12, 1),
+                    size_hint_y=None, height=32,
+                    halign="left",
+                ))
 
         # ── PRs ───────────────────────────────────────────────────
         if prs:
-            pr_box = BoxLayout(orientation="vertical", size_hint_y=None,
-                               height=28 * len(prs) + 8, spacing=2)
             for rtype, old, new in prs:
                 if rtype.startswith("pace_"):
                     dist_label = rtype.replace("pace_", "").replace("m", "") + "m"
                     txt = f"  ★  {dist_label} pace  {_pace_str(new)}/500m"
                 else:
                     txt = f"  ★  {_PR_NAMES.get(rtype, rtype)}  {new:.0f}"
-                pr_box.add_widget(Label(
-                    text=txt,
-                    font_size="18sp",
+                inner.add_widget(Label(
+                    text=txt, font_size="18sp",
                     color=(1.0, 0.82, 0.12, 1),
-                    halign="left",
-                    size_hint_y=None,
-                    height=28,
+                    halign="left", size_hint_y=None, height=28,
                 ))
-            content.add_widget(pr_box)
-
-    popup = Popup(
-        title="Session Complete",
-        content=content,
-        size_hint=(1, 1),
-        auto_dismiss=False,
-    )
-
-    def _close(_):
-        popup.dismiss()
-        if on_close:
-            on_close()
 
     close_btn = Button(
-        text="Close",
-        font_size="22sp",
-        size_hint_y=None,
-        height=70,
-        background_normal="",
-        background_color=BTN_NEUTRAL,
-        on_press=_close,
+        text="Close", font_size="22sp",
+        size_hint_y=None, height=70,
+        background_normal="", background_color=BTN_NEUTRAL,
     )
-    content.add_widget(close_btn)
+
+    root.add_widget(scroll)
+    root.add_widget(close_btn)
+
+    popup = Popup(title="Session Complete", content=root,
+                  size_hint=(1, 1), auto_dismiss=False)
+
+    close_btn.bind(on_press=lambda _: (popup.dismiss(),
+                                        on_close() if on_close else None))
     return popup
