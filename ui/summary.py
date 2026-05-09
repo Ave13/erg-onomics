@@ -140,7 +140,7 @@ def _load_session(session_id):
             sess = conn.execute(
                 "SELECT started_at, ended_at, total_distance, total_time, "
                 "       avg_pace, avg_watts, avg_spm, max_watts, calories, "
-                "       avg_hr, max_hr, user_id "
+                "       avg_hr, max_hr, user_id, drag_factor, workout_id "
                 "FROM sessions WHERE id=?", (session_id,)
             ).fetchone()
             speed_rows = conn.execute(
@@ -191,7 +191,7 @@ def build_summary_popup(session_id, prs=None, on_close=None):
     else:
         (started_at, ended_at, dist, elapsed, avg_pace,
          avg_watts, avg_spm, max_watts, calories, avg_hr, max_hr,
-         user_id) = sess
+         user_id, drag_factor, workout_id) = sess
 
         # ── stats grid ────────────────────────────────────────────
         grid = GridLayout(cols=3, rows=2, spacing=4,
@@ -205,6 +205,25 @@ def build_summary_popup(session_id, prs=None, on_close=None):
         grid.add_widget(_stat_cell("Avg HR",    f"{avg_hr:.0f}"      if avg_hr    else "--",
                                    value_color=hr_col))
         inner.add_widget(grid)
+
+        # ── workout name + drag factor ────────────────────────────
+        meta_parts = []
+        if workout_id:
+            try:
+                from db.workouts import get_workout
+                w = get_workout(workout_id)
+                if w:
+                    meta_parts.append(w[1])
+            except Exception:
+                pass
+        if drag_factor:
+            meta_parts.append(f"Drag {drag_factor}")
+        if meta_parts:
+            inner.add_widget(Label(
+                text="  ".join(meta_parts),
+                font_size="15sp", color=LABEL_COLOR,
+                size_hint_y=None, height=24, halign="left",
+            ))
 
         # ── pace graph ────────────────────────────────────────────
         if speed_rows:
@@ -276,14 +295,29 @@ def build_summary_popup(session_id, prs=None, on_close=None):
                     halign="left", size_hint_y=None, height=28,
                 ))
 
+    btn_row = BoxLayout(size_hint_y=None, height=70, spacing=6)
+
+    compare_btn = Button(
+        text="Compare", font_size="20sp",
+        size_hint_x=0.4,
+        background_normal="", background_color=BTN_NEUTRAL,
+    )
     close_btn = Button(
         text="Close", font_size="22sp",
-        size_hint_y=None, height=70,
         background_normal="", background_color=BTN_NEUTRAL,
     )
 
+    def _on_compare(_):
+        from ui.comparison import build_comparison_popup
+        build_comparison_popup().open()
+
+    compare_btn.bind(on_press=_on_compare)
+
+    btn_row.add_widget(compare_btn)
+    btn_row.add_widget(close_btn)
+
     root.add_widget(scroll)
-    root.add_widget(close_btn)
+    root.add_widget(btn_row)
 
     popup = Popup(title="Session Complete", content=root,
                   size_hint=(1, 1), auto_dismiss=False)

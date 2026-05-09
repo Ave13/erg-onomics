@@ -14,6 +14,7 @@ from ble.pm5 import (
     start_session, stop_session, pause_session, resume_session,
     find_resumable_session, has_user_profile,
 )
+from ble.ftms import start_ftms
 from ui.profile import build_profile_popup
 from ui.summary import build_summary_popup
 from ui.audio import check_and_cue, reset_cues
@@ -135,20 +136,22 @@ class RowingApp(App):
         # ── button row ───────────────────────────────────────────
         btn_row = BoxLayout(size_hint_y=None, height=90, spacing=4, padding=(4, 4))
 
-        self.start_btn   = ActionButton("Start",   BTN_START)
-        self.pause_btn   = ActionButton("Pause",   BTN_PAUSE,  disabled=True)
-        self.end_btn     = ActionButton("End",     BTN_END,    disabled=True)
-        self.target_btn  = ActionButton("Target",  BTN_NEUTRAL, size_hint_x=0.6)
-        self.profile_btn = ActionButton("Profile", BTN_NEUTRAL, size_hint_x=0.6)
+        self.start_btn    = ActionButton("Start",   BTN_START)
+        self.pause_btn    = ActionButton("Pause",   BTN_PAUSE,   disabled=True)
+        self.end_btn      = ActionButton("End",     BTN_END,     disabled=True)
+        self.target_btn   = ActionButton("Target",  BTN_NEUTRAL, size_hint_x=0.55)
+        self.workout_btn  = ActionButton("Workout", BTN_NEUTRAL, size_hint_x=0.55)
+        self.profile_btn  = ActionButton("Profile", BTN_NEUTRAL, size_hint_x=0.55)
 
         self.start_btn.bind(on_press=self._on_start)
         self.pause_btn.bind(on_press=self._on_pause)
         self.end_btn.bind(on_press=self._on_end)
         self.target_btn.bind(on_press=self._on_target)
+        self.workout_btn.bind(on_press=self._on_workout)
         self.profile_btn.bind(on_press=self._on_profile)
 
         for b in (self.start_btn, self.pause_btn, self.end_btn,
-                  self.target_btn, self.profile_btn):
+                  self.target_btn, self.workout_btn, self.profile_btn):
             btn_row.add_widget(b)
 
         root.add_widget(grid)
@@ -158,6 +161,7 @@ class RowingApp(App):
         Clock.schedule_interval(self.update_ui, 0.5)
         Clock.schedule_interval(lambda dt: check_and_cue(), 1.0)
         threading.Thread(target=start_ble, daemon=True).start()
+        start_ftms()
 
         if not has_user_profile():
             Clock.schedule_once(lambda dt: self._show_profile_setup(), 0.3)
@@ -211,7 +215,17 @@ class RowingApp(App):
             if cur > 1:
                 streak_txt = f"  {cur} day streak"
 
-        parts = [p for p in [name, status_text, streak_txt] if p]
+        plan_txt = ""
+        if uid and not state["session_active"]:
+            from db.training_plan import get_today
+            wid, notes = get_today()
+            if wid:
+                from db.workouts import get_workout
+                w = get_workout(wid)
+                if w:
+                    plan_txt = f"  Today: {w[1]}"
+
+        parts = [p for p in [name, status_text, streak_txt, plan_txt] if p]
         self._status.text = "   ".join(parts)
 
     def _on_start(self, _):
@@ -246,6 +260,16 @@ class RowingApp(App):
 
     def _on_target(self, _):
         _build_pace_target_popup().open()
+
+    def _on_workout(self, _):
+        from ui.workout_builder import build_workout_selector
+
+        def _selected(wid, wname, wdef):
+            state["active_workout_id"]   = wid
+            state["active_workout_name"] = wname
+            self.workout_btn.text = wname[:10] if wname else "Workout"
+
+        build_workout_selector(on_select=_selected).open()
 
     def _on_profile(self, _):
         build_profile_popup(on_save=self._on_profile_saved).open()

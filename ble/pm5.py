@@ -26,19 +26,23 @@ state = {
     "workout_state": 0,
     "stroke_count": 0,
     "speed_mm_s": 0,
+    "drag_factor": None,
+    "stroke_state": 0,   # 0=idle 1=drive 2=decelerate 3=recovery
     "hr_bpm": "--",
     "session_id": None,
     "session_active": False,
     "session_paused": False,
     "session_prs": [],
-    "target_pace_sec": None,  # target /500m in seconds; None = no target
+    "target_pace_sec": None,
+    "active_workout_id": None,
+    "active_workout_name": "",
     # user profile
     "user_id": None,
     "user_name": "",
     "user_weight_kg": None,
     "user_height_cm": None,
-    "expected_drive_cm": None,   # height_cm * 0.50  — ideal curve x-scale
-    "expected_peak_n": None,     # weight_kg * 4.5   — ideal curve y-scale
+    "expected_drive_cm": None,
+    "expected_peak_n": None,
 }
 
 _stroke_times = collections.deque(maxlen=10)
@@ -149,17 +153,37 @@ def _init_db():
                 ("stroke_log", "work_per_stroke_j",  "REAL"),
                 ("stroke_log", "stroke_distance_m",  "REAL"),
                 ("sessions",   "user_id",            "INTEGER"),
+                ("sessions",   "workout_id",         "INTEGER"),
                 ("sessions",   "started_at",         "REAL"),
                 ("sessions",   "ended_at",           "REAL"),
                 ("sessions",   "status",             "TEXT DEFAULT 'active'"),
                 ("sessions",   "avg_hr",             "INTEGER"),
                 ("sessions",   "max_hr",             "INTEGER"),
+                ("sessions",   "drag_factor",        "INTEGER"),
                 ("sessions",   "tcx_path",           "TEXT"),
             ]:
                 try:
                     conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typedef}")
                 except Exception:
                     pass
+            # workouts table
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS workouts ("
+                "id         INTEGER PRIMARY KEY, "
+                "name       TEXT    NOT NULL, "
+                "definition JSON    NOT NULL, "
+                "is_preset  INTEGER DEFAULT 0, "
+                "created_at REAL)"
+            )
+            # training plan table
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS training_plan ("
+                "id          INTEGER PRIMARY KEY, "
+                "day_of_week INTEGER NOT NULL UNIQUE, "
+                "workout_id  INTEGER, "
+                "notes       TEXT, "
+                "created_at  REAL)"
+            )
     except Exception:
         pass
 
@@ -238,9 +262,16 @@ def parse_add_status_1(data):
     speed_mm_s = int.from_bytes(data[0:2], "little")
     pace_str = speed_to_pace(speed_mm_s)
     pace_sec = (500 / (speed_mm_s / 1000)) if speed_mm_s > 0 else 0
-    state["pace"]      = pace_str
-    state["watts"]     = pace_to_watts(pace_sec)
+    state["pace"]       = pace_str
+    state["watts"]      = pace_to_watts(pace_sec)
     state["speed_mm_s"] = speed_mm_s
+    if len(data) >= 3:
+        state["stroke_state"] = data[2] & 0x03   # lower 2 bits: 0=idle,1=drive,2=decel,3=recovery
+    if len(data) >= 4:
+        # byte 3 carries drag factor (1–222 typical range on PM5)
+        df = data[3]
+        if df > 0:
+            state["drag_factor"] = df
 
 
 def parse_stroke_data(data):
@@ -295,7 +326,7 @@ def parse_workout_summary(data):
     pass  # stub — byte layout TBD; doesn't affect session stop flow
 
 
-def start_session(resume_id=None):
+def start_session(resume_id=None, workout_id=None):
     global _ema_interval_secs
     _ema_interval_secs = None
     _stroke_times.clear()
@@ -304,11 +335,12 @@ def start_session(resume_id=None):
         state["session_active"] = True
         state["session_paused"] = False
         return resume_id
+    wid = workout_id or state.get("active_workout_id")
     try:
         with sqlite3.connect(_DB_PATH) as conn:
             cur = conn.execute(
-                "INSERT INTO sessions (user_id, started_at, status) VALUES (?, ?, 'active')",
-                (state["user_id"], time.time())
+                "INSERT INTO sessions (user_id, workout_id, started_at, status) VALUES (?, ?, ?, 'active')",
+                (state["user_id"], wid, time.time())
             )
             session_id = cur.lastrowid
         state["session_id"]     = session_id
@@ -349,13 +381,14 @@ def stop_session():
                 "  status='complete', ended_at=?, "
                 "  total_distance=?, total_time=?, "
                 "  avg_pace=?, avg_watts=?, avg_spm=?, max_watts=?, "
-                "  calories=?, avg_hr=?, max_hr=? "
+                "  calories=?, avg_hr=?, max_hr=?, drag_factor=? "
                 "WHERE id=?",
                 (time.time(), distance, elapsed,
                  avg_pace_sec, avg_watts_val, avg_spm_val, max_watts_val,
                  calories_val,
                  int(avg_hr) if avg_hr else None,
                  int(max_hr) if max_hr else None,
+                 state.get("drag_factor"),
                  sid)
             )
         stroke_rows = conn.execute(
