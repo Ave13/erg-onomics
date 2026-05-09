@@ -5,11 +5,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Running the App
 
 ```bash
-# Run on the Pi (requires display)
+# Standard launch (requires a display connected or X11 running)
 DISPLAY=:0 python main.py
 
-# Run from SSH session
+# From SSH session
 DISPLAY=:0 python main.py &
+
+# If Kivy has rendering issues on the UNO Q's Adreno GPU, force SDL2 backend
+KIVY_GL_BACKEND=sdl2 DISPLAY=:0 python main.py
 ```
 
 The app auto-connects to any BLE device whose name contains "PM5". No PM5 present? The UI still launches; all BLE notifications simply never fire.
@@ -17,11 +20,13 @@ The app auto-connects to any BLE device whose name contains "PM5". No PM5 presen
 ## Installing Dependencies
 
 ```bash
-# Core (Debian/Pi OS)
-pip install bleak kivy[base]
+# Core
+pip install bleak "kivy[base]"
 
-# Optional — FTMS Rower broadcast (Zwift compatibility)
+# FTMS Rower broadcast (ErgZone / Zwift on iPad)
+sudo apt install -y python3-dbus python3-gi
 pip install bless
+sudo usermod -aG bluetooth $USER   # then log out/in once
 
 # Audio cues
 sudo apt install espeak
@@ -107,6 +112,10 @@ All under service base `XXXXXXXX-43E5-11E4-916C-0800200C9A66`:
 
 > **Critical**: PM5 characteristics cannot be `read()` — only `start_notify()`. Direct reads return zeros.
 
+### Target Hardware
+
+**Arduino UNO Q** — quad-core ARM Cortex-A53 @ 2 GHz, 2–4 GB RAM, 16–32 GB eMMC, Bluetooth 5.1, Debian Linux. The 4 GB model is recommended. Everything in this repo runs on it unmodified; it is a Linux ARM board in the same class as a Raspberry Pi.
+
 ### FTMS Broadcast (`ble/ftms.py`)
 
-Broadcasts live data as an FTMS Rower (service `0x1826`, Rower Data `0x2AD1`) every 500 ms. Zwift and ErgZone can connect directly. Requires `pip install bless`. Gracefully disabled if bless is absent.
+Broadcasts live data as an FTMS Rower (service `0x1826`, Rower Data `0x2AD1`) every 500 ms. ErgZone and Zwift on iPad/iPhone can connect directly via BLE. The UNO Q's Qualcomm BT 5.1 chip handles central (→ PM5) and peripheral (← iPad) simultaneously via BlueZ dual-role. Requires `pip install bless` plus the D-Bus system packages above. Gracefully disabled if bless is absent.

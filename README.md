@@ -1,6 +1,6 @@
 # erg-onomics
 
-Concept2 PM5 rowing app for Raspberry Pi 3B with 7" touchscreen. Connects over BLE, logs every stroke, and gives you post-workout analytics without any cloud dependency.
+Concept2 PM5 rowing app for the Arduino UNO Q. Connects to the PM5 over BLE, logs every stroke to SQLite, and delivers post-workout analytics with no cloud dependency. Live metrics stream to an iPad or iPhone via FTMS broadcast (ErgZone, Zwift).
 
 ## Screenshots
 
@@ -12,7 +12,7 @@ Concept2 PM5 rowing app for Raspberry Pi 3B with 7" touchscreen. Connects over B
 |---|---|
 | ![Workout selector](docs/screenshots/workouts.png) | ![Training plan](docs/screenshots/plan.png) |
 
-> To add screenshots: run the app on the Pi, press `Print Screen` or use `scrot docs/screenshots/live.png` to capture.
+> To add screenshots: SSH into the UNO Q and run `scrot docs/screenshots/live.png` while the app is running.
 
 ## Features
 
@@ -41,21 +41,25 @@ Concept2 PM5 rowing app for Raspberry Pi 3B with 7" touchscreen. Connects over B
 ## Stack
 
 - **Python 3** — `bleak` (BLE), `Kivy` (UI), `SQLite` (storage)
-- **Target** — Raspberry Pi 3B, Raspberry Pi OS Bookworm (32-bit), official 7" touchscreen
+- **Target** — Arduino UNO Q (Qualcomm QRB2210, ARM Cortex-A53, BT 5.1), Debian Linux, 4 GB model recommended
 
 ## Quick Start
 
 ```bash
 # Install dependencies
 pip install bleak "kivy[base]"
-sudo apt install espeak          # optional: audio cues
-pip install bless                # optional: FTMS/Zwift broadcast
+sudo apt install -y python3-dbus python3-gi espeak
+pip install bless                          # enables FTMS broadcast to iPad
+sudo usermod -aG bluetooth $USER           # then log out/in once
 
 # Run
 DISPLAY=:0 python main.py
+
+# If Kivy has rendering issues on the Adreno GPU:
+KIVY_GL_BACKEND=sdl2 DISPLAY=:0 python main.py
 ```
 
-Power on the PM5, start rowing — the app auto-discovers it by name over BLE. First launch prompts for a user profile (name, weight, height, date of birth).
+Power on the PM5, start rowing — the app auto-discovers it by name over BLE. First launch prompts for a user profile (name, weight, height, date of birth). Open **ErgZone** on iPad and it will find "ErgRower" over Bluetooth.
 
 ## Data
 

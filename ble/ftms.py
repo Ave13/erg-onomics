@@ -2,10 +2,10 @@
 FTMS Rower Profile BLE broadcast.
 
 Allows ErgZone, Kinomap, and other FTMS-aware fitness apps on iPad/iPhone
-to connect to this Pi and receive live rowing data.
+to connect to the UNO Q and receive live rowing data.
 
-The Pi simultaneously acts as BLE central (connected to PM5) and peripheral
-(advertising FTMS) — the BCM43438 on Pi 3B supports dual-role at the BlueZ level.
+The UNO Q simultaneously acts as BLE central (connected to PM5) and peripheral
+(advertising FTMS for iPad) — the Qualcomm BT 5.1 chip supports dual-role via BlueZ.
 
 Requires:
     sudo apt install python3-dbus python3-gi
