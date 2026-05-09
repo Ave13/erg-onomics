@@ -4,6 +4,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the App
 
+### Streamlit (primary — iPhone/iPad via Safari)
+
+```bash
+# Install once
+pip install streamlit plotly
+
+# Run (serves on port 8501)
+streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+```
+
+Open `http://<UNO-Q-IP>:8501` in iPad Safari. No app needed.
+The UNO Q connects to the PM5 over BLE and broadcasts FTMS to ErgZone simultaneously.
+
+### Kivy (local display fallback)
+
 ```bash
 # Standard launch (requires a display connected or X11 running)
 DISPLAY=:0 python main.py
