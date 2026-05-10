@@ -1,2 +1,4 @@
 bleak>=0.21.0
 kivy[base]>=2.3.0
+streamlit>=1.36.0
+plotly>=5.0

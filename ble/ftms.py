@@ -1,76 +1,88 @@
 """
 FTMS Rower Profile BLE broadcast.
 
-Allows Zwift, ErgZone, and other fitness apps to connect to this Pi and
-receive live rowing data as if it were an FTMS Rower device.
+Allows ErgZone, Kinomap, and other FTMS-aware fitness apps on iPad/iPhone
+to connect to the UNO Q and receive live rowing data.
 
-Requires `bless` (pip install bless / apt install python3-bless).
-Silently disabled if bless is not installed.
+The UNO Q simultaneously acts as BLE central (connected to PM5) and peripheral
+(advertising FTMS for iPad) — the Qualcomm BT 5.1 chip supports dual-role via BlueZ.
+
+Requires:
+    sudo apt install python3-dbus python3-gi
+    pip install bless
+
+Silent no-op if bless is not installed.
 """
 import asyncio
+import logging
 import struct
 import threading
 
+log = logging.getLogger(__name__)
+
 try:
-    from bless import (
-        BlessServer,
-        BlessGATTCharacteristic,
-        GATTCharacteristicProperties,
-        GATTAttributePermissions,
-    )
+    from bless import BlessServer, GATTCharacteristicProperties, GATTAttributePermissions
     _BLESS_OK = True
 except ImportError:
     _BLESS_OK = False
 
-# FTMS service and key characteristics (Bluetooth SIG assigned numbers)
-_FTMS_SERVICE   = "00001826-0000-1000-8000-00805f9b34fb"
-_ROWER_DATA     = "00002ad1-0000-1000-8000-00805f9b34fb"
-_FTMS_FEATURE   = "00002acc-0000-1000-8000-00805f9b34fb"
-_FTMS_STATUS    = "00002ada-0000-1000-8000-00805f9b34fb"
-_FTMS_CONTROL   = "00002ad9-0000-1000-8000-00805f9b34fb"
+# Bluetooth SIG FTMS UUIDs
+_FTMS_SERVICE = "00001826-0000-1000-8000-00805f9b34fb"
+_ROWER_DATA   = "00002ad1-0000-1000-8000-00805f9b34fb"   # notify + read
+_FTMS_FEATURE = "00002acc-0000-1000-8000-00805f9b34fb"   # read-only
 
-# Rower Data flags we'll always send:
-# bit 2 = Total Distance, bit 3 = Instantaneous Pace,
-# bit 5 = Instantaneous Power, bit 9 = Heart Rate, bit 11 = Elapsed Time
+# Rower Data flags (always present fields):
+# bit 2 = Total Distance, bit 3 = Inst. Pace,
+# bit 5 = Inst. Power, bit 9 = Heart Rate, bit 11 = Elapsed Time
 _FLAGS = (1 << 2) | (1 << 3) | (1 << 5) | (1 << 9) | (1 << 11)
 
+# FTMS Feature bitmap: bit 1 = Cadence, bit 14 = Power Measurement
+_FEATURE_WORD = struct.pack("<II", (1 << 1) | (1 << 14), 0)
+
 _server = None
-_loop   = None
 
 
 def _rower_bytes():
-    """Build FTMS Rower Data characteristic bytes from current state."""
+    """Pack current state into an FTMS Rower Data characteristic payload."""
     from ble.pm5 import state
 
     spm = state.get("spm", 0)
-    stroke_rate = int(spm * 2) if isinstance(spm, (int, float)) else 0  # unit 0.5/min
+    # Stroke rate field: units of 0.5 /min  →  value = SPM * 2
+    stroke_rate  = int(spm * 2) if isinstance(spm, (int, float)) else 0
     stroke_count = int(state.get("stroke_count", 0)) & 0xFFFF
 
     dist_m = int(state.get("distance", 0))
 
-    speed_mm_s = state.get("speed_mm_s", 0)
-    if speed_mm_s and speed_mm_s > 0:
-        pace_hundredths = int(500 / (speed_mm_s / 1000) * 100)
+    speed_mm_s = state.get("speed_mm_s", 0) or 0
+    if speed_mm_s > 0:
+        pace_hundredths = min(int(500 / (speed_mm_s / 1000) * 100), 65535)
     else:
         pace_hundredths = 0
-    pace_hundredths = min(pace_hundredths, 65535)
 
-    power = int(state.get("watts", 0))
-    power = max(-32768, min(32767, power))
+    power = max(-32768, min(int(state.get("watts", 0)), 32767))
 
-    hr = state.get("hr_bpm", 0)
-    hr_val = hr if isinstance(hr, int) else 0
-    hr_val = min(255, max(0, hr_val))
+    hr    = state.get("hr_bpm", 0)
+    hr_val = min(hr if isinstance(hr, int) else 0, 255)
 
     elapsed = min(int(state.get("elapsed", 0)), 65535)
 
-    data = struct.pack("<HBH", _FLAGS, stroke_rate, stroke_count)
-    data += struct.pack("<I", dist_m)[:3]          # uint24 total distance
-    data += struct.pack("<H", pace_hundredths)     # instantaneous pace
-    data += struct.pack("<h", power)               # instantaneous power (sint16)
-    data += struct.pack("<B", hr_val)              # heart rate
-    data += struct.pack("<H", elapsed)             # elapsed time
+    data  = struct.pack("<HBH", _FLAGS, stroke_rate, stroke_count)
+    data += struct.pack("<I", dist_m)[:3]       # uint24 total distance (m)
+    data += struct.pack("<H", pace_hundredths)   # inst. pace (0.01 s/500m)
+    data += struct.pack("<h", power)             # inst. power (sint16, W)
+    data += struct.pack("<B", hr_val)            # heart rate (uint8, bpm)
+    data += struct.pack("<H", elapsed)           # elapsed time (uint16, s)
     return bytearray(data)
+
+
+async def _notify(char_uuid):
+    """Update characteristic value and trigger BLE notification."""
+    global _server
+    char = _server.get_characteristic(char_uuid)
+    char.value = _rower_bytes()
+    result = _server.update_value(_FTMS_SERVICE, char_uuid)
+    if asyncio.iscoroutine(result):
+        await result
 
 
 async def _ftms_loop():
@@ -80,17 +92,12 @@ async def _ftms_loop():
 
     await _server.add_new_service(_FTMS_SERVICE)
 
-    # FTMS Feature characteristic (read-only; advertise Rowing Machine bit)
-    # Fitness Machine Feature word: bit 10 = Cadence Supported, bit 9 = Power Supported
-    feature_val = bytearray(struct.pack("<II", (1 << 9) | (1 << 10), 0))
     await _server.add_new_characteristic(
         _FTMS_SERVICE, _FTMS_FEATURE,
         GATTCharacteristicProperties.read,
-        feature_val,
+        bytearray(_FEATURE_WORD),
         GATTAttributePermissions.readable,
     )
-
-    # Rower Data (notify + read)
     await _server.add_new_characteristic(
         _FTMS_SERVICE, _ROWER_DATA,
         GATTCharacteristicProperties.notify | GATTCharacteristicProperties.read,
@@ -99,32 +106,32 @@ async def _ftms_loop():
     )
 
     await _server.start()
+    log.info("FTMS broadcast started — advertising as 'ErgRower'")
 
     while True:
         await asyncio.sleep(0.5)
         try:
-            _server.get_characteristic(_ROWER_DATA).value = _rower_bytes()
-            await _server.update_value(_FTMS_SERVICE, _ROWER_DATA)
-        except Exception:
-            pass
+            await _notify(_ROWER_DATA)
+        except Exception as exc:
+            log.debug("FTMS notify error: %s", exc)
 
 
 def start_ftms():
     """
-    Launch the FTMS broadcast in a background daemon thread.
+    Start FTMS Rower broadcast in a background daemon thread.
     No-op if bless is not installed.
     """
     if not _BLESS_OK:
+        log.info("bless not installed — FTMS broadcast disabled")
         return
 
     def _run():
-        global _loop
-        _loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(_loop)
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            _loop.run_until_complete(_ftms_loop())
-        except Exception:
-            pass
+            loop.run_until_complete(_ftms_loop())
+        except Exception as exc:
+            log.warning("FTMS broadcast stopped: %s", exc)
 
     threading.Thread(target=_run, daemon=True, name="ftms-broadcast").start()
 
