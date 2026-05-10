@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Erg</title>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --bg:       #111118;
+  --card:     #1e1f2a;
+  --label:    #737aaa;
+  --value:    #f2f2f8;
+  --green:    #26da72;
+  --red:      #ff5940;
+  --hr-red:   #f25757;
+  --blue:     #2e8cd9;
+  --btn-h:    64px;
+}
+
+html, body { height: 100%; background: var(--bg); color: var(--value); font-family: -apple-system, sans-serif; }
+
+/* ── Nav tabs ── */
+#nav { display: flex; background: var(--card); border-bottom: 1px solid #2a2b3a; }
+#nav button {
+  flex: 1; height: 52px; background: none; border: none; color: var(--label);
+  font-size: 15px; font-weight: 600; letter-spacing: .04em; cursor: pointer;
+}
+#nav button.active { color: var(--value); border-bottom: 2px solid var(--blue); }
+
+/* ── Pages ── */
+.page { display: none; padding: 12px; overflow-y: auto; height: calc(100vh - 52px); }
+.page.active { display: block; }
+
+/* ── Metric grid ── */
+#metrics { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+.card {
+  background: var(--card); border-radius: 12px; padding: 12px 6px 10px;
+  text-align: center;
+}
+.card .lbl { font-size: 12px; color: var(--label); text-transform: uppercase; letter-spacing: .08em; }
+.card .val { font-size: clamp(28px, 8vw, 52px); font-weight: 700; line-height: 1.1; }
+.card.pace-green .val { color: var(--green); }
+.card.pace-red   .val { color: var(--red); }
+.card.hr         .val { color: var(--hr-red); }
+
+/* ── Status bar ── */
+#status {
+  text-align: center; font-size: 14px; color: var(--label);
+  padding: 6px 0 10px; min-height: 28px;
+}
+#status .recording { color: var(--green); font-weight: 700; }
+#status .paused    { color: var(--blue);  font-weight: 700; }
+
+/* ── Buttons ── */
+#controls { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+#controls2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 10px; }
+button.btn {
+  height: var(--btn-h); border: none; border-radius: 10px;
+  font-size: 18px; font-weight: 700; cursor: pointer; width: 100%;
+  transition: opacity .1s;
+}
+button.btn:active { opacity: .75; }
+button.btn:disabled { opacity: .35; cursor: default; }
+.btn-start   { background: #26b870; color: #fff; }
+.btn-pause   { background: var(--blue); color: #fff; }
+.btn-end     { background: #d94040; color: #fff; }
+.btn-neutral { background: #383c4d; color: #ccc; }
+
+/* ── Target pace banner ── */
+#target-bar {
+  display: none; background: #2a2a1e; border-left: 4px solid #e6c21a;
+  border-radius: 4px; padding: 7px 12px; font-size: 14px; color: #e6c21a;
+  margin-bottom: 10px; display: flex; align-items: center; justify-content: space-between;
+}
+#target-bar.hidden { display: none; }
+
+/* ── Resume prompt ── */
+#resume-prompt {
+  display: none; background: #1e2a1e; border: 1px solid var(--green);
+  border-radius: 10px; padding: 14px; margin-bottom: 10px;
+}
+#resume-prompt p { font-size: 15px; margin-bottom: 10px; }
+#resume-prompt .row { display: flex; gap: 8px; }
+
+/* ── Modal overlay ── */
+#modal-overlay {
+  display: none; position: fixed; inset: 0; background: rgba(0,0,0,.7);
+  z-index: 100; align-items: center; justify-content: center;
+}
+#modal-overlay.open { display: flex; }
+#modal {
+  background: var(--card); border-radius: 16px; padding: 24px;
+  width: min(90vw, 400px); max-height: 80vh; overflow-y: auto;
+}
+#modal h2 { font-size: 20px; margin-bottom: 16px; }
+.form-row { margin-bottom: 14px; }
+.form-row label { display: block; font-size: 13px; color: var(--label); margin-bottom: 5px; }
+.form-row input, .form-row select {
+  width: 100%; height: 48px; background: #111118; color: var(--value);
+  border: 1px solid #2a2b3a; border-radius: 8px; padding: 0 12px; font-size: 16px;
+}
+.form-row .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.modal-btns { display: flex; gap: 8px; margin-top: 18px; }
+.modal-btns button { flex: 1; }
+
+/* ── Section headings ── */
+h3 { font-size: 16px; color: var(--label); text-transform: uppercase;
+     letter-spacing: .06em; margin: 16px 0 8px; }
+
+/* ── Summary cards ── */
+#summary-stats { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; margin-bottom: 12px; }
+.scard {
+  background: var(--card); border-radius: 10px; padding: 12px 8px; text-align: center;
+}
+.scard .lbl { font-size: 11px; color: var(--label); text-transform: uppercase; }
+.scard .val { font-size: 22px; font-weight: 700; }
+
+/* ── Chart canvas ── */
+canvas { width: 100% !important; border-radius: 8px; margin-bottom: 10px; }
+
+/* ── Zone bar ── */
+#zone-bar { display: flex; height: 16px; border-radius: 4px; overflow: hidden; margin: 6px 0 12px; }
+
+/* ── PR badge ── */
+.pr { background: #2d2a10; border: 1px solid #e6c21a; border-radius: 6px;
+      padding: 7px 12px; color: #e6c21a; font-size: 14px; margin: 4px 0; }
+
+/* ── History list ── */
+.hist-row {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--card); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+  cursor: pointer; font-size: 14px;
+}
+.hist-row:active { opacity: .7; }
+
+/* ── Workout list ── */
+.wk-row {
+  display: flex; align-items: center; justify-content: space-between;
+  background: var(--card); border-radius: 10px; padding: 12px 14px; margin-bottom: 8px;
+}
+.wk-row .name { font-size: 15px; font-weight: 600; }
+.wk-row .sub  { font-size: 12px; color: var(--label); margin-top: 2px; }
+.wk-row button { flex-shrink: 0; }
+
+/* ── Plan grid ── */
+.plan-row {
+  display: flex; align-items: center; gap: 10px;
+  background: var(--card); border-radius: 10px;
+  padding: 10px 14px; margin-bottom: 8px;
+}
+.plan-day { width: 36px; font-weight: 700; flex-shrink: 0; }
+.plan-wk  { flex: 1; font-size: 14px; color: var(--label); }
+.plan-wk.set { color: var(--value); }
+
+/* ── Small button ── */
+button.sm {
+  height: 38px; padding: 0 14px; border-radius: 8px; border: none;
+  font-size: 13px; font-weight: 600; cursor: pointer; background: #383c4d; color: #ccc;
+}
+button.sm.sel { background: var(--blue); color: #fff; }
+button.sm:active { opacity: .75; }
+
+/* ── Strive score ── */
+#strive-score { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<!-- Navigation -->
+<div id="nav">
+  <button class="active" onclick="nav('row')">Row</button>
+  <button onclick="nav('history')">History</button>
+  <button onclick="nav('workouts')">Workouts</button>
+  <button onclick="nav('plan')">Plan</button>
+  <button onclick="nav('profile')">Profile</button>
+</div>
+
+<!-- ══ ROW PAGE ══════════════════════════════════════════════════════════════ -->
+<div id="page-row" class="page active">
+  <div id="resume-prompt">
+    <p id="resume-msg"></p>
+    <div class="row">
+      <button class="btn btn-start" style="height:48px;font-size:15px" onclick="doResume()">Resume</button>
+      <button class="btn btn-neutral" style="height:48px;font-size:15px" onclick="dismissResume()">Start New</button>
+    </div>
+  </div>
+
+  <div id="metrics">
+    <div class="card" id="card-pace"><div class="lbl">Pace</div><div class="val" id="m-pace">--:--</div></div>
+    <div class="card"><div class="lbl">Watts</div><div class="val" id="m-watts">0</div></div>
+    <div class="card"><div class="lbl">SPM</div><div class="val" id="m-spm">--</div></div>
+    <div class="card"><div class="lbl">Dist m</div><div class="val" id="m-dist">0</div></div>
+    <div class="card"><div class="lbl">Time</div><div class="val" id="m-time">0:00</div></div>
+    <div class="card hr"><div class="lbl">HR</div><div class="val" id="m-hr">--</div></div>
+  </div>
+
+  <div id="status">Ready</div>
+
+  <div id="target-bar" class="hidden">
+    <span id="target-label"></span>
+    <button class="sm" onclick="clearTarget()">Clear</button>
+  </div>
+
+  <div id="controls">
+    <button class="btn btn-start"   id="btn-start"  onclick="doStart()">Start</button>
+    <button class="btn btn-pause"   id="btn-pause"  onclick="doPause()" disabled>Pause</button>
+    <button class="btn btn-end"     id="btn-end"    onclick="doEnd()"   disabled>End</button>
+  </div>
+  <div id="controls2">
+    <button class="btn btn-neutral" onclick="openTargetModal()">Target Pace</button>
+    <button class="btn btn-neutral" onclick="nav('workouts')">Workout</button>
+  </div>
+</div>
+
+<!-- ══ HISTORY PAGE ══════════════════════════════════════════════════════════ -->
+<div id="page-history" class="page">
+  <div id="summary-panel" style="display:none">
+    <h3 id="summary-title">Last Session</h3>
+    <div id="summary-stats"></div>
+    <canvas id="pace-chart" height="120"></canvas>
+    <canvas id="force-chart" height="90" style="display:none"></canvas>
+    <div id="strive-score"></div>
+    <div id="zone-bar"></div>
+    <div id="pr-list"></div>
+    <div id="streak-info" style="font-size:14px;color:var(--label);margin-bottom:12px"></div>
+    <div id="summary-meta" style="font-size:13px;color:var(--label);margin-bottom:16px"></div>
+    <button class="btn btn-neutral" style="height:48px;font-size:15px;margin-bottom:16px" onclick="hideSummary()">Done</button>
+    <hr style="border-color:#2a2b3a;margin-bottom:16px">
+  </div>
+  <h3>Sessions</h3>
+  <div id="hist-list"></div>
+</div>
+
+<!-- ══ WORKOUTS PAGE ════════════════════════════════════════════════════════ -->
+<div id="page-workouts" class="page">
+  <h3>Library</h3>
+  <div id="wk-list"></div>
+  <h3>New Custom Workout</h3>
+  <div class="form-row">
+    <label>Name</label>
+    <input id="wk-name" type="text" placeholder="My Workout" value="My Workout">
+  </div>
+  <div class="form-row">
+    <label>Type</label>
+    <select id="wk-type" onchange="renderIntervalForm()">
+      <option value="distance">Distance</option>
+      <option value="time">Time</option>
+    </select>
+  </div>
+  <div id="interval-form"></div>
+  <div class="form-row">
+    <label>Rest (sec)</label>
+    <select id="wk-rest">
+      <option value="0">No rest</option>
+      <option value="30">0:30</option>
+      <option value="60">1:00</option>
+      <option value="90">1:30</option>
+      <option value="120" selected>2:00</option>
+      <option value="150">2:30</option>
+      <option value="180">3:00</option>
+      <option value="240">4:00</option>
+      <option value="300">5:00</option>
+      <option value="600">10:00</option>
+    </select>
+  </div>
+  <div class="form-row">
+    <label>Reps</label>
+    <input id="wk-reps" type="number" value="1" min="1" max="20">
+  </div>
+  <button class="btn btn-neutral" style="height:52px;font-size:16px" onclick="saveWorkout()">Save Workout</button>
+</div>
+
+<!-- ══ PLAN PAGE ════════════════════════════════════════════════════════════ -->
+<div id="page-plan" class="page">
+  <h3>Weekly Plan</h3>
+  <div id="plan-grid"></div>
+</div>
+
+<!-- ══ PROFILE PAGE ═════════════════════════════════════════════════════════ -->
+<div id="page-profile" class="page">
+  <h3>Profile</h3>
+  <div class="form-row"><label>Name</label><input id="p-name" type="text" placeholder="Your name"></div>
+  <div class="form-row"><label>Weight (kg)</label><input id="p-weight" type="number" step="0.5" min="30" max="200" placeholder="80"></div>
+  <div class="form-row">
+    <label>Height</label>
+    <div class="row2">
+      <input id="p-ft" type="number" min="4" max="7" placeholder="ft">
+      <input id="p-in" type="number" min="0" max="11" placeholder="in">
+    </div>
+  </div>
+  <div class="form-row"><label>Date of Birth (optional)</label><input id="p-dob" type="date"></div>
+  <button class="btn btn-start" style="height:56px;font-size:17px;margin-bottom:20px" onclick="saveProfile()">Save Profile</button>
+  <div id="p-msg" style="text-align:center;font-size:14px;min-height:20px"></div>
+</div>
+
+<!-- ══ TARGET PACE MODAL ════════════════════════════════════════════════════ -->
+<div id="modal-overlay" onclick="closeModal(event)">
+  <div id="modal">
+    <h2>Target Pace / 500m</h2>
+    <div class="form-row">
+      <label>Minutes</label>
+      <input id="tgt-min" type="number" min="1" max="9" value="2">
+    </div>
+    <div class="form-row">
+      <label>Seconds</label>
+      <input id="tgt-sec" type="number" min="0" max="59" value="0">
+    </div>
+    <div class="modal-btns">
+      <button class="btn btn-neutral" onclick="closeModal()">Cancel</button>
+      <button class="btn btn-start"   onclick="setTarget()">Set</button>
+    </div>
+  </div>
+</div>
+
+<!-- Chart.js via CDN (no install needed) -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script>
+// ── State ────────────────────────────────────────────────────────────────────
+let _active = false, _paused = false;
+let _resumeId = null;
+let _targetSec = null;
+let _paceChart = null, _forceChart = null;
+let _lastSummaryId = null;
+
+// ── Navigation ────────────────────────────────────────────────────────────────
+function nav(page) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('#nav button').forEach(b => b.classList.remove('active'));
+  document.getElementById('page-' + page).classList.add('active');
+  const idx = ['row','history','workouts','plan','profile'].indexOf(page);
+  document.querySelectorAll('#nav button')[idx].classList.add('active');
+  if (page === 'history') loadHistory();
+  if (page === 'workouts') loadWorkouts();
+  if (page === 'plan') loadPlan();
+  if (page === 'profile') loadProfile();
+}
+
+// ── Live metric polling ───────────────────────────────────────────────────────
+async function tick() {
+  try {
+    const s = await fetch('/api/state').then(r => r.json());
+    _active = s.session_active;
+    _paused = s.session_paused;
+
+    document.getElementById('m-pace').textContent  = s.pace  || '--:--';
+    document.getElementById('m-watts').textContent = s.watts != null ? s.watts : '0';
+    document.getElementById('m-spm').textContent   = s.spm   != null ? s.spm   : '--';
+    document.getElementById('m-dist').textContent  = s.distance_str || '0';
+    document.getElementById('m-time').textContent  = s.elapsed_str  || '0:00';
+    document.getElementById('m-hr').textContent    = s.hr_bpm != null ? s.hr_bpm : '--';
+
+    // Pace card colour
+    const pc = document.getElementById('card-pace');
+    pc.classList.remove('pace-green', 'pace-red');
+    if (s.pace_color === 'green') pc.classList.add('pace-green');
+    if (s.pace_color === 'red')   pc.classList.add('pace-red');
+
+    // Status
+    const st = document.getElementById('status');
+    if (_paused)       st.innerHTML = '<span class="paused">⏸ Paused</span>';
+    else if (_active)  st.innerHTML = '<span class="recording">⬤ Recording</span>';
+    else {
+      const parts = [];
+      if (s.user_name) parts.push(s.user_name);
+      st.textContent = parts.join('  ·  ') || 'Ready';
+    }
+
+    // Buttons
+    document.getElementById('btn-start').disabled = _active;
+    document.getElementById('btn-pause').disabled = !_active;
+    document.getElementById('btn-end').disabled   = !_active;
+    document.getElementById('btn-pause').textContent = _paused ? 'Resume' : 'Pause';
+  } catch(e) {}
+}
+setInterval(tick, 500);
+
+// ── Startup: check for resumable session ─────────────────────────────────────
+(async () => {
+  const r = await fetch('/api/resumable').then(r => r.json());
+  if (r.session) {
+    _resumeId = r.session.id;
+    document.getElementById('resume-msg').textContent =
+      `Incomplete session from ${r.session.started_at_str}. Resume or start fresh?`;
+    document.getElementById('resume-prompt').style.display = 'block';
+  }
+})();
+
+// ── Session controls ──────────────────────────────────────────────────────────
+async function doStart() {
+  await fetch('/api/start', {method:'POST'});
+}
+async function doPause() {
+  if (_paused) await fetch('/api/resume', {method:'POST'});
+  else         await fetch('/api/pause',  {method:'POST'});
+}
+async function doEnd() {
+  const res = await fetch('/api/end', {method:'POST'}).then(r => r.json());
+  if (res.session_id) {
+    _lastSummaryId = res.session_id;
+    nav('history');
+    showSummary(res.session_id, 'Last Session');
+  }
+}
+async function doResume() {
+  await fetch('/api/resume-session', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({session_id: _resumeId})
+  });
+  document.getElementById('resume-prompt').style.display = 'none';
+}
+async function dismissResume() {
+  document.getElementById('resume-prompt').style.display = 'none';
+  await fetch('/api/start', {method:'POST'});
+}
+
+// ── Target pace ───────────────────────────────────────────────────────────────
+function openTargetModal() {
+  if (_targetSec) {
+    document.getElementById('tgt-min').value = Math.floor(_targetSec / 60);
+    document.getElementById('tgt-sec').value = _targetSec % 60;
+  }
+  document.getElementById('modal-overlay').classList.add('open');
+}
+function closeModal(e) {
+  if (!e || e.target === document.getElementById('modal-overlay'))
+    document.getElementById('modal-overlay').classList.remove('open');
+}
+async function setTarget() {
+  const m = parseInt(document.getElementById('tgt-min').value) || 0;
+  const s = parseInt(document.getElementById('tgt-sec').value) || 0;
+  _targetSec = m * 60 + s;
+  await fetch('/api/target', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({seconds: _targetSec})
+  });
+  document.getElementById('target-label').textContent =
+    `Target: ${m}:${String(s).padStart(2,'0')} /500m`;
+  document.getElementById('target-bar').classList.remove('hidden');
+  closeModal();
+}
+async function clearTarget() {
+  _targetSec = null;
+  await fetch('/api/target', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({seconds: null})
+  });
+  document.getElementById('target-bar').classList.add('hidden');
+}
+
+// ── Summary ───────────────────────────────────────────────────────────────────
+async function showSummary(sid, title) {
+  const d = await fetch(`/api/summary/${sid}`).then(r => r.json());
+
+  document.getElementById('summary-title').textContent = title;
+  document.getElementById('summary-panel').style.display = 'block';
+
+  // Stats grid
+  const stats = d.stats;
+  document.getElementById('summary-stats').innerHTML = [
+    ['Distance', stats.distance], ['Time', stats.time], ['Avg Pace', stats.avg_pace],
+    ['Avg Watts', stats.avg_watts], ['Avg SPM', stats.avg_spm], ['Avg HR', stats.avg_hr],
+  ].map(([l,v]) =>
+    `<div class="scard"><div class="lbl">${l}</div><div class="val">${v}</div></div>`
+  ).join('');
+
+  // Pace chart
+  const pEl = document.getElementById('pace-chart');
+  if (d.pace_series.length) {
+    if (_paceChart) _paceChart.destroy();
+    _paceChart = new Chart(pEl, {
+      type: 'line',
+      data: {
+        labels: d.pace_series.map(p => p.x),
+        datasets: [{
+          data: d.pace_series.map(p => p.y),
+          borderColor: '#33bf8a', borderWidth: 2, pointRadius: 0, tension: 0.3, fill: false
+        }]
+      },
+      options: {
+        animation: false,
+        plugins: {legend:{display:false}},
+        scales: {
+          x: {display:false},
+          y: {reverse:true, ticks:{color:'#737aaa'}, grid:{color:'#2a2b3a'}}
+        }
+      }
+    });
+    pEl.style.display = 'block';
+  } else { pEl.style.display = 'none'; }
+
+  // Force chart
+  const fEl = document.getElementById('force-chart');
+  if (d.force_series.length) {
+    if (_forceChart) _forceChart.destroy();
+    _forceChart = new Chart(fEl, {
+      type: 'line',
+      data: {
+        labels: d.force_series.map(p => p.x),
+        datasets: [
+          {label:'Avg N',  data:d.force_series.map(p=>p.avg),  borderColor:'#4080f2',borderWidth:2,pointRadius:0,fill:false},
+          {label:'Peak N', data:d.force_series.map(p=>p.peak), borderColor:'#f27320',borderWidth:2,pointRadius:0,fill:false},
+        ]
+      },
+      options: {
+        animation:false,
+        plugins:{legend:{labels:{color:'#737aaa'}}},
+        scales:{x:{display:false},y:{ticks:{color:'#737aaa'},grid:{color:'#2a2b3a'}}}
+      }
+    });
+    fEl.style.display = 'block';
+  } else { fEl.style.display = 'none'; }
+
+  // Strive score + zone bar
+  const sv = d.strive;
+  const ssEl = document.getElementById('strive-score');
+  const zbEl = document.getElementById('zone-bar');
+  if (sv.score > 0) {
+    ssEl.textContent = `Strive Score: ${sv.score}`;
+    const total = sv.zone_times.reduce((a,b)=>a+b,0) || 1;
+    zbEl.innerHTML = sv.zone_times.map((t,i) =>
+      `<span title="${sv.zone_names[i]}" style="width:${(t/total*100).toFixed(1)}%;background:${sv.zone_hex[i]};display:inline-block;height:100%"></span>`
+    ).join('');
+  } else { ssEl.textContent = ''; zbEl.innerHTML = ''; }
+
+  // Streak
+  const skEl = document.getElementById('streak-info');
+  skEl.textContent = d.streak > 1 ? `${d.streak}-day streak` : '';
+
+  // PRs
+  document.getElementById('pr-list').innerHTML = (d.prs||[]).map(([type,old,nw]) => {
+    const label = type.startsWith('pace_')
+      ? `★ ${type.replace('pace_','').replace('m','')}m pace  ${_paceStr(nw)}/500m`
+      : `★ ${type.replace(/_/g,' ')}  ${Math.round(nw)}`;
+    return `<div class="pr">${label}</div>`;
+  }).join('');
+
+  // Meta
+  const meta = [];
+  if (d.workout_name) meta.push(d.workout_name);
+  if (d.drag_factor)  meta.push(`Drag ${d.drag_factor}`);
+  document.getElementById('summary-meta').textContent = meta.join('  ·  ');
+}
+
+function hideSummary() {
+  document.getElementById('summary-panel').style.display = 'none';
+}
+
+function _paceStr(sec) {
+  if (!sec) return '--:--';
+  return `${Math.floor(sec/60)}:${String(Math.floor(sec%60)).padStart(2,'0')}`;
+}
+
+// ── History ───────────────────────────────────────────────────────────────────
+async function loadHistory() {
+  const rows = await fetch('/api/history').then(r => r.json());
+  document.getElementById('hist-list').innerHTML = rows.map(r =>
+    `<div class="hist-row" onclick="showSummary(${r.id},'${r.label}')">
+      <span>${r.label}</span><span style="color:var(--label);font-size:18px">›</span>
+    </div>`
+  ).join('') || '<p style="color:var(--label);font-size:14px">No sessions yet.</p>';
+}
+
+// ── Workouts ──────────────────────────────────────────────────────────────────
+let _workouts = [];
+async function loadWorkouts() {
+  _workouts = await fetch('/api/workouts').then(r => r.json());
+  document.getElementById('wk-list').innerHTML = _workouts.map(w =>
+    `<div class="wk-row">
+      <div><div class="name">${w.name}${w.is_preset?'':' <span style="font-size:11px;color:var(--label)">[custom]</span>'}</div>
+           <div class="sub">${w.summary}</div></div>
+      <button class="sm sel" onclick="selectWorkout(${w.id},'${w.name.replace(/'/g,"\\'")}')">Use</button>
+    </div>`
+  ).join('');
+  renderIntervalForm();
+}
+
+async function selectWorkout(id, name) {
+  await fetch('/api/workouts/select', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({workout_id: id, workout_name: name})
+  });
+  nav('row');
+}
+
+function renderIntervalForm() {
+  const type = document.getElementById('wk-type').value;
+  if (type === 'distance') {
+    document.getElementById('interval-form').innerHTML = `
+      <div class="form-row"><label>Distance (m)</label>
+        <select id="wk-dist">
+          ${[100,200,250,300,400,500,750,1000,1500,2000,2500,3000,5000,10000]
+            .map(v=>`<option value="${v}"${v===500?' selected':''}>${v}m</option>`).join('')}
+        </select></div>`;
+  } else {
+    document.getElementById('interval-form').innerHTML = `
+      <div class="form-row"><label>Duration</label>
+        <select id="wk-time">
+          ${[[30,'0:30'],[60,'1:00'],[90,'1:30'],[120,'2:00'],[150,'2:30'],[180,'3:00'],
+             [240,'4:00'],[300,'5:00'],[360,'6:00'],[480,'8:00'],[600,'10:00'],[900,'15:00'],
+             [1200,'20:00'],[1800,'30:00'],[3600,'60:00']]
+            .map(([v,l])=>`<option value="${v}"${v===300?' selected':''}>${l}</option>`).join('')}
+        </select></div>`;
+  }
+}
+
+async function saveWorkout() {
+  const name  = document.getElementById('wk-name').value.trim() || 'My Workout';
+  const type  = document.getElementById('wk-type').value;
+  const rest  = parseInt(document.getElementById('wk-rest').value);
+  const reps  = parseInt(document.getElementById('wk-reps').value) || 1;
+  let iv;
+  if (type === 'distance') {
+    const m = parseInt(document.getElementById('wk-dist').value);
+    iv = {type:'distance', meters:m, rest_secs:rest};
+  } else {
+    const s = parseInt(document.getElementById('wk-time').value);
+    iv = {type:'time', seconds:s, rest_secs:rest};
+  }
+  const intervals = Array.from({length:reps}, ()=>({...iv}));
+  await fetch('/api/workouts', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, intervals})
+  });
+  loadWorkouts();
+}
+
+// ── Plan ──────────────────────────────────────────────────────────────────────
+async function loadPlan() {
+  const [plan, workouts] = await Promise.all([
+    fetch('/api/plan').then(r=>r.json()),
+    fetch('/api/workouts').then(r=>r.json()),
+  ]);
+  const wkOpts = workouts.map(w=>`<option value="${w.id}">${w.name}</option>`).join('');
+  document.getElementById('plan-grid').innerHTML = plan.map(d => `
+    <div class="plan-row">
+      <div class="plan-day">${d.name}</div>
+      <div class="plan-wk ${d.workout_id?'set':''}">${d.workout_name || 'Rest'}</div>
+      <select id="plan-sel-${d.day}" style="height:38px;background:#111118;color:var(--value);border:1px solid #2a2b3a;border-radius:8px;padding:0 8px;font-size:14px">
+        <option value="">Rest</option>${wkOpts}
+      </select>
+      <button class="sm" onclick="setPlan(${d.day})">Set</button>
+    </div>`
+  ).join('');
+  // Pre-select current assignment
+  plan.forEach(d => {
+    if (d.workout_id) {
+      const sel = document.getElementById(`plan-sel-${d.day}`);
+      if (sel) sel.value = d.workout_id;
+    }
+  });
+}
+
+async function setPlan(day) {
+  const sel = document.getElementById(`plan-sel-${day}`);
+  const wid = sel.value;
+  if (wid) {
+    await fetch(`/api/plan/${day}`, {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({workout_id: parseInt(wid)})
+    });
+  } else {
+    await fetch(`/api/plan/${day}`, {method:'DELETE'});
+  }
+  loadPlan();
+}
+
+// ── Profile ───────────────────────────────────────────────────────────────────
+async function loadProfile() {
+  const p = await fetch('/api/profile').then(r=>r.json());
+  if (p.name)      document.getElementById('p-name').value   = p.name;
+  if (p.weight_kg) document.getElementById('p-weight').value = p.weight_kg;
+  if (p.height_cm) {
+    const totalIn = p.height_cm / 2.54;
+    document.getElementById('p-ft').value = Math.floor(totalIn / 12);
+    document.getElementById('p-in').value = Math.round(totalIn % 12);
+  }
+}
+
+async function saveProfile() {
+  const name = document.getElementById('p-name').value.trim();
+  const wt   = parseFloat(document.getElementById('p-weight').value);
+  const ft   = parseFloat(document.getElementById('p-ft').value) || 0;
+  const inch = parseFloat(document.getElementById('p-in').value) || 0;
+  const dob  = document.getElementById('p-dob').value || null;
+  const ht   = parseFloat(((ft * 12 + inch) * 2.54).toFixed(1));
+
+  if (!name || !wt || !ht) {
+    document.getElementById('p-msg').textContent = 'Name, weight, and height are required.';
+    return;
+  }
+  await fetch('/api/profile', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, weight_kg:wt, height_cm:ht, dob})
+  });
+  document.getElementById('p-msg').textContent = 'Saved.';
+  setTimeout(()=>{ document.getElementById('p-msg').textContent=''; }, 2000);
+}
+
+// Initial tick
+tick();
+</script>
+</body>
+</html>

@@ -4,14 +4,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Running the App
 
-### Streamlit (primary — iPhone/iPad via Safari)
+### FastAPI web app (primary — iPhone/iPad via Safari)
 
 ```bash
 # Install once
-pip install streamlit plotly
+pip install fastapi "uvicorn[standard]"
 
 # Run (serves on port 8501)
-streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+uvicorn server:app --host 0.0.0.0 --port 8501
 ```
 
 Open `http://<UNO-Q-IP>:8501` in iPad Safari. No app needed.

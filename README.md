@@ -48,13 +48,13 @@ Concept2 PM5 rowing app for the Arduino UNO Q. Connects to the PM5 over BLE, log
 
 ```bash
 # 1. Install dependencies
-pip install bleak streamlit plotly
+pip install bleak fastapi "uvicorn[standard]"
 sudo apt install -y python3-dbus python3-gi espeak
 pip install bless                          # enables FTMS broadcast to ErgZone / Zwift
 sudo usermod -aG bluetooth $USER           # then log out/in once
 
-# 2. Run the Streamlit app
-streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+# 2. Run
+uvicorn server:app --host 0.0.0.0 --port 8501
 ```
 
 Open `http://<UNO-Q-IP>:8501` in iPad or iPhone Safari — no app download needed.
