@@ -1,6 +1,6 @@
 # erg-onomics
 
-Concept2 PM5 rowing app for the Arduino UNO Q. Connects to the PM5 over BLE, logs every stroke to SQLite, and delivers post-workout analytics with no cloud dependency. Live metrics stream to an iPad or iPhone via FTMS broadcast (ErgZone, Zwift).
+Concept2 PM5 rowing app for the Arduino UNO Q. Connects to the PM5 over BLE, logs every stroke to SQLite, and delivers post-workout analytics with no cloud dependency. The primary UI runs as a Streamlit web app — open it on iPad or iPhone via Safari over local WiFi. The UNO Q simultaneously broadcasts live data as an FTMS Rower for ErgZone and Zwift.
 
 ## Screenshots
 
@@ -12,11 +12,11 @@ Concept2 PM5 rowing app for the Arduino UNO Q. Connects to the PM5 over BLE, log
 |---|---|
 | ![Workout selector](docs/screenshots/workouts.png) | ![Training plan](docs/screenshots/plan.png) |
 
-> To add screenshots: SSH into the UNO Q and run `scrot docs/screenshots/live.png` while the app is running.
+> To add screenshots: open the app on iPad, take a screenshot, and drop it in `docs/screenshots/`.
 
 ## Features
 
-**Live metrics** — Pace, Watts, SPM (EMA-smoothed), Distance, Time, HR — all from the PM5 over BLE with no cables.
+**Live metrics** — Pace, Watts, SPM (EMA-smoothed), Distance, Time, HR — all from the PM5 over BLE with no cables. Pace card turns green/red vs your target.
 
 **Session recording** — Every stroke logged to SQLite: drive/recovery timing, avg/peak force, work per stroke, HR. Sessions survive restarts and can be resumed.
 
@@ -24,7 +24,7 @@ Concept2 PM5 rowing app for the Arduino UNO Q. Connects to the PM5 over BLE, log
 
 **Personal records** — Tracked per user for 2k/5k/10k pace, distance, time, avg/peak watts, avg SPM.
 
-**Workout library** — 10 preset Concept2 pieces (2k Test, 5k Test, 6×500m, 4×1000m, etc.) plus a touchscreen interval builder for custom sessions.
+**Workout library** — 10 preset Concept2 pieces (2k Test, 5k Test, 6×500m, 4×1000m, etc.) plus an interval builder for custom sessions.
 
 **Training plan** — Assign workouts to days of the week; today's workout appears in the status bar.
 
@@ -32,7 +32,7 @@ Concept2 PM5 rowing app for the Arduino UNO Q. Connects to the PM5 over BLE, log
 
 **Audio cues** — espeak announces distance, pace, and HR every 500 m or 60 s.
 
-**FTMS broadcast** — Broadcasts as an FTMS Rower over BLE so Zwift and ErgZone can connect directly (requires `pip install bless`).
+**FTMS broadcast** — Broadcasts as an FTMS Rower over BLE so ErgZone and Zwift on iPad/iPhone can connect directly (requires `pip install bless`).
 
 **TCX export** — Every session exported to `exports/` for Apple Health (via HealthFit), Garmin Connect, or Strava.
 
@@ -40,26 +40,39 @@ Concept2 PM5 rowing app for the Arduino UNO Q. Connects to the PM5 over BLE, log
 
 ## Stack
 
-- **Python 3** — `bleak` (BLE), `Kivy` (UI), `SQLite` (storage)
+- **Python 3** — `bleak` (BLE central), `bless` (FTMS peripheral), `streamlit` + `plotly` (web UI), `SQLite` (storage)
 - **Target** — Arduino UNO Q (Qualcomm QRB2210, ARM Cortex-A53, BT 5.1), Debian Linux, 4 GB model recommended
+- **Client** — Any browser; optimised for iPad/iPhone Safari
 
 ## Quick Start
 
 ```bash
-# Install dependencies
-pip install bleak "kivy[base]"
+# 1. Install dependencies
+pip install bleak streamlit plotly
 sudo apt install -y python3-dbus python3-gi espeak
-pip install bless                          # enables FTMS broadcast to iPad
+pip install bless                          # enables FTMS broadcast to ErgZone / Zwift
 sudo usermod -aG bluetooth $USER           # then log out/in once
 
-# Run
+# 2. Run the Streamlit app
+streamlit run streamlit_app.py --server.port 8501 --server.address 0.0.0.0
+```
+
+Open `http://<UNO-Q-IP>:8501` in iPad or iPhone Safari — no app download needed.
+
+Power on the PM5 and start rowing. The app auto-discovers it by name over BLE. On first launch, go to **Profile** to set your name, weight, height, and date of birth. Open **ErgZone** on iPad and it will also find "ErgRower" over Bluetooth simultaneously.
+
+### Kivy fallback (local display)
+
+If you have a display connected directly to the UNO Q:
+
+```bash
+pip install "kivy[base]"
+
 DISPLAY=:0 python main.py
 
 # If Kivy has rendering issues on the Adreno GPU:
 KIVY_GL_BACKEND=sdl2 DISPLAY=:0 python main.py
 ```
-
-Power on the PM5, start rowing — the app auto-discovers it by name over BLE. First launch prompts for a user profile (name, weight, height, date of birth). Open **ErgZone** on iPad and it will find "ErgRower" over Bluetooth.
 
 ## Data
 
