@@ -56,6 +56,11 @@ state = {
     "interval_index": 0,
     "interval_phase": "work",   # "work" | "rest" | "done"
     "interval_remaining": None,
+    # BLE connection status
+    "ble_status": "scanning",   # "scanning" | "found" | "connecting" | "connected" | "disconnected"
+    "ble_devices": [],          # [{"address": str, "name": str}] — discovered PM5s
+    "ble_address": None,        # address of selected/connected device (set by user or auto)
+    "ble_name": None,           # display name of connected device
 }
 
 _stroke_times = collections.deque(maxlen=10)
@@ -470,13 +475,47 @@ def find_resumable_session():
 
 async def ble_main():
     while True:
-        devices = await BleakScanner.discover(timeout=10)
-        pm5 = next((d for d in devices if d.name and "PM5" in d.name), None)
-        if not pm5:
+        state["ble_status"] = "scanning"
+        state["ble_devices"] = []
+        try:
+            devices = await BleakScanner.discover(timeout=10)
+        except Exception:
             await asyncio.sleep(5)
             continue
+
+        pm5_devs = [d for d in devices if d.name and "PM5" in d.name]
+        if not pm5_devs:
+            await asyncio.sleep(5)
+            continue
+
+        state["ble_devices"] = [{"address": d.address, "name": d.name} for d in pm5_devs]
+
+        # Choose which device to connect to
+        pref = state.get("ble_address")
+        target = next((d for d in pm5_devs if d.address == pref), None) if pref else None
+
+        if target is None and len(pm5_devs) == 1:
+            # Only one erg — auto-select it
+            target = pm5_devs[0]
+            state["ble_address"] = target.address
+
+        if target is None:
+            # Multiple ergs, no preference yet — wait for user to pick via /api/ble/connect
+            state["ble_status"] = "found"
+            while not state.get("ble_address"):
+                await asyncio.sleep(0.5)
+            pref = state["ble_address"]
+            target = next((d for d in pm5_devs if d.address == pref), None)
+            if target is None:
+                # Preference set but device not in last scan; clear and rescan
+                state["ble_address"] = None
+                continue
+
+        state["ble_status"] = "connecting"
+        state["ble_name"]   = target.name
         try:
-            async with BleakClient(pm5.address) as client:
+            async with BleakClient(target.address) as client:
+                state["ble_status"] = "connected"
                 await client.start_notify(ROWING_STATUS_UUID,   lambda s, d: parse_general_status(d))
                 await client.start_notify(ADD_STATUS_UUID,      lambda s, d: parse_add_status_1(d))
                 await client.start_notify(STROKE_DATA_UUID,     lambda s, d: parse_stroke_data(d))
@@ -485,7 +524,9 @@ async def ble_main():
                 while client.is_connected:
                     await asyncio.sleep(1)
         except Exception:
-            await asyncio.sleep(3)
+            pass
+        state["ble_status"] = "disconnected"
+        await asyncio.sleep(3)
 
 
 def start_ble():

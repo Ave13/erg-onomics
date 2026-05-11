@@ -172,6 +172,33 @@ canvas.chart { width:100% !important; }
 .pr { background:#2d2a10; border:1px solid var(--yellow); border-radius:6px;
       padding:6px 11px; color:var(--yellow); font-size:13px; margin:3px 0; }
 
+/* ── BLE status pill ── */
+#ble-pill { display:flex; align-items:center; gap:5px; cursor:pointer;
+            background:var(--card); border-radius:20px; padding:3px 10px;
+            font-size:12px; font-weight:600; border:none; color:var(--value); }
+#ble-dot  { width:8px; height:8px; border-radius:50%; flex-shrink:0; }
+#ble-dot.scanning    { background:var(--label); animation:blink 1.5s infinite; }
+#ble-dot.found       { background:var(--blue);  animation:blink 1s   infinite; }
+#ble-dot.connecting  { background:var(--yellow); animation:blink .8s  infinite; }
+#ble-dot.connected   { background:var(--green); }
+#ble-dot.disconnected{ background:var(--red); }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+
+/* ── Erg picker bottom sheet ── */
+#erg-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75);
+               z-index:101; align-items:flex-end; justify-content:center; }
+#erg-overlay.open { display:flex; }
+#erg-sheet { background:var(--card); border-radius:16px 16px 0 0; padding:18px 16px;
+             width:100%; max-width:480px; }
+#erg-sheet h2 { font-size:17px; margin-bottom:14px; }
+.erg-row { display:flex; align-items:center; justify-content:space-between;
+           background:#111118; border-radius:10px; padding:12px 14px;
+           margin-bottom:8px; cursor:pointer; }
+.erg-row:active { opacity:.7; }
+.erg-row-name { font-size:15px; font-weight:600; }
+.erg-row-addr { font-size:12px; color:var(--label); margin-top:2px; }
+.erg-check { color:var(--green); font-size:18px; flex-shrink:0; }
+
 /* ── Workouts / Plan / Profile ── */
 .wk-row { display:flex; align-items:center; justify-content:space-between;
           background:var(--card); border-radius:10px; padding:11px 13px; margin-bottom:7px; }
@@ -212,6 +239,10 @@ button.sm:active { opacity:.75; }
 
   <div id="row-header">
     <div id="status">Ready</div>
+    <button id="ble-pill" onclick="openErgPicker()">
+      <span id="ble-dot" class="scanning"></span>
+      <span id="ble-text">Scanning…</span>
+    </button>
     <div id="screen-dots"></div>
   </div>
   <div id="screen-label"></div>
@@ -322,6 +353,15 @@ button.sm:active { opacity:.75; }
     </div>
   </div>
 </div>
+<!-- ══ ERG PICKER SHEET ══════════════════════════════════════════════════════ -->
+<div id="erg-overlay" onclick="closeErgPicker(event)">
+  <div id="erg-sheet">
+    <h2>Select Erg</h2>
+    <div id="erg-list"></div>
+    <button class="btn btn-neutral" style="height:46px;margin-top:4px" onclick="closeErgPicker()">Cancel</button>
+  </div>
+</div>
+
 </div><!-- #shell -->
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
@@ -345,6 +385,9 @@ let _paceChart = null, _forceChart = null;
 let _touchStartX = 0;
 // Tap-to-flip: which alternate is showing for each slot
 const _flip = {};
+// BLE
+let _bleDevices = [];
+let _bleAddress = localStorage.getItem('bleAddress') || null;
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function nav(page) {
@@ -673,6 +716,66 @@ function formatRem(sec, phase) {
 }
 function estimateTotal(phase) { return 60; }  // rough divisor for progress bar
 
+// ── BLE device selection ──────────────────────────────────────────────────────
+function updateBlePill(status, name, devices) {
+  _bleDevices = devices || [];
+  const dot = document.getElementById('ble-dot');
+  const txt = document.getElementById('ble-text');
+  if (!dot) return;
+  dot.className = status;
+  const labels = {
+    scanning:    'Scanning…',
+    found:       'Select Erg',
+    connecting:  'Connecting…',
+    connected:   name || 'Connected',
+    disconnected:'Disconnected',
+  };
+  txt.textContent = labels[status] || status;
+
+  if (status === 'found') {
+    // If we have a saved preference that matches a found device, auto-connect
+    if (_bleAddress) {
+      const match = _bleDevices.find(d => d.address === _bleAddress);
+      if (match) { selectErg(match.address, match.name); return; }
+    }
+    // Otherwise show the picker
+    openErgPicker();
+  }
+}
+
+function openErgPicker() {
+  const list = document.getElementById('erg-list');
+  if (!_bleDevices.length) {
+    list.innerHTML = '<p style="color:var(--label);text-align:center;padding:14px 0">Scanning for ergs…</p>';
+  } else {
+    list.innerHTML = _bleDevices.map(d => `
+      <div class="erg-row" onclick="selectErg('${d.address}','${d.name}')">
+        <div>
+          <div class="erg-row-name">${d.name}</div>
+          <div class="erg-row-addr">${d.address}</div>
+        </div>
+        ${d.address === _bleAddress ? '<span class="erg-check">✓</span>' : ''}
+      </div>`).join('');
+  }
+  document.getElementById('erg-overlay').classList.add('open');
+}
+
+function closeErgPicker(e) {
+  if (e && e.target !== document.getElementById('erg-overlay')) return;
+  document.getElementById('erg-overlay').classList.remove('open');
+}
+
+async function selectErg(address, name) {
+  _bleAddress = address;
+  localStorage.setItem('bleAddress', address);
+  await fetch('/api/ble/connect', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({address}),
+  });
+  closeErgPicker();
+}
+
 // ── Poll & update ─────────────────────────────────────────────────────────────
 async function tick() {
   try {
@@ -695,6 +798,9 @@ async function tick() {
     if (bs) bs.disabled = _active;
     if (bp) { bp.disabled = !_active; bp.textContent = _paused ? 'Resume' : 'Pause'; }
     if (be) be.disabled = !_active;
+
+    // BLE status pill
+    updateBlePill(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
 
     // Re-render current screen
     renderScreen();

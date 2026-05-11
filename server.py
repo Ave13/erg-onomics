@@ -443,6 +443,28 @@ def api_clear_plan(day: int):
     return {"ok": True}
 
 
+# ── BLE device selection ─────────────────────────────────────────────────────
+
+@app.get("/api/ble/devices")
+def api_ble_devices():
+    return {
+        "status":  state.get("ble_status", "scanning"),
+        "devices": state.get("ble_devices", []),
+        "address": state.get("ble_address"),
+        "name":    state.get("ble_name"),
+    }
+
+
+class BleConnectBody(BaseModel):
+    address: str
+
+@app.post("/api/ble/connect")
+def api_ble_connect(body: BleConnectBody):
+    """Set the preferred erg address. The BLE loop picks it up within 500 ms."""
+    state["ble_address"] = body.address
+    return {"ok": True}
+
+
 # ── Profile ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/profile")
