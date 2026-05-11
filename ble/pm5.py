@@ -43,6 +43,19 @@ state = {
     "user_height_cm": None,
     "expected_drive_cm": None,
     "expected_peak_n": None,
+    # perfect-stroke streak (updated in parse_stroke_data)
+    "perfect_streak": 0,
+    "perfect_streak_best": 0,
+    # raw numeric force/drive values for force-curve screen
+    "peak_force_n": None,
+    "avg_force_n": None,
+    "drive_time_secs": None,
+    "drive_length_cm_raw": None,
+    "recovery_secs": None,
+    # interval tracking (updated in server.py _update_interval_state)
+    "interval_index": 0,
+    "interval_phase": "work",   # "work" | "rest" | "done"
+    "interval_remaining": None,
 }
 
 _stroke_times = collections.deque(maxlen=10)
@@ -286,10 +299,15 @@ def parse_stroke_data(data):
     work_per_stroke_j = int.from_bytes(data[16:18], "little") / 10
     stroke_count      = int.from_bytes(data[18:20], "little")
 
-    state["drive_time"]   = f"{drive_time_secs:.2f}s"
-    state["recovery"]     = f"{recovery_secs:.2f}s"
-    state["drive_length"] = f"{drive_length_cm}cm"
-    state["stroke_count"] = stroke_count
+    state["drive_time"]        = f"{drive_time_secs:.2f}s"
+    state["recovery"]          = f"{recovery_secs:.2f}s"
+    state["drive_length"]      = f"{drive_length_cm}cm"
+    state["stroke_count"]      = stroke_count
+    state["peak_force_n"]      = peak_force_n
+    state["avg_force_n"]       = avg_force_n
+    state["drive_time_secs"]   = drive_time_secs
+    state["drive_length_cm_raw"] = drive_length_cm
+    state["recovery_secs"]     = recovery_secs
 
     now = time.monotonic()
     interval = None
@@ -313,6 +331,20 @@ def parse_stroke_data(data):
             drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n,
             work_per_stroke_j, stroke_distance_m,
         )
+
+    # Perfect-stroke streak evaluation
+    if avg_force_n and avg_force_n > 0 and peak_force_n:
+        ratio = peak_force_n / avg_force_n
+        exp_cm = state.get("expected_drive_cm") or drive_length_cm
+        ratio_ok  = 1.3 <= ratio <= 1.8
+        time_ok   = 0.5 <= drive_time_secs <= 1.2
+        length_ok = abs(drive_length_cm - exp_cm) <= 15
+        if ratio_ok and time_ok and length_ok:
+            state["perfect_streak"] += 1
+            if state["perfect_streak"] > state["perfect_streak_best"]:
+                state["perfect_streak_best"] = state["perfect_streak"]
+        else:
+            state["perfect_streak"] = 0
 
 
 def parse_heart_rate(data):

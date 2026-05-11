@@ -105,12 +105,17 @@ def workout_summary(definition):
 
 
 def _interval_label(iv):
-    if iv.get("type") == "distance":
+    t = iv.get("type")
+    if t == "distance":
         txt = f"{iv.get('meters', 0)}m"
+    elif t == "calorie":
+        txt = f"{iv.get('calories', 0)} kcal"
     else:
         s = iv.get("seconds", 0)
         txt = f"{s // 60}:{s % 60:02d}"
     rest = iv.get("rest_secs", 0)
-    if rest:
+    if rest == -1:
+        txt += "  +athlete rest"
+    elif rest:
         txt += f"  +{rest // 60}:{rest % 60:02d} rest"
     return txt
