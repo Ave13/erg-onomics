@@ -75,7 +75,7 @@ def speed_to_pace(speed_mm_s):
 def pace_to_watts(pace_sec):
     if pace_sec == 0:
         return 0
-    return round(2.80 / (pace_sec / 60) ** 3)
+    return round(2.80 / (pace_sec / 500) ** 3)
 
 
 def _calc_spm():
