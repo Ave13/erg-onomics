@@ -97,19 +97,24 @@ def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
                 work_per_stroke_j=None, stroke_distance_m=None):
     if state.get("session_paused"):
         return
+    # Derived correlation metrics
+    watts = round(2.80 / (500_000 / speed_mm_s / 500) ** 3) if speed_mm_s > 0 else None
+    peak_avg_ratio = round(peak_force_n / avg_force_n, 3) if (peak_force_n and avg_force_n and avg_force_n > 0) else None
     try:
         with sqlite3.connect(_DB_PATH) as conn:
             conn.execute(
                 "INSERT INTO stroke_log "
                 "(stroke_num, elapsed_secs, interval_secs, speed_mm_s, logged_at, "
                 " drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n, "
-                " session_id, hr_bpm, work_per_stroke_j, stroke_distance_m) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " session_id, hr_bpm, work_per_stroke_j, stroke_distance_m, "
+                " watts, peak_avg_ratio) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (stroke_num, elapsed_secs, round(interval_secs, 4), speed_mm_s, time.time(),
                  drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n,
                  state["session_id"],
                  state["hr_bpm"] if isinstance(state["hr_bpm"], int) else None,
-                 work_per_stroke_j, stroke_distance_m),
+                 work_per_stroke_j, stroke_distance_m,
+                 watts, peak_avg_ratio),
             )
     except Exception:
         pass
@@ -170,6 +175,14 @@ def _init_db():
                 ("stroke_log", "hr_bpm",             "INTEGER"),
                 ("stroke_log", "work_per_stroke_j",  "REAL"),
                 ("stroke_log", "stroke_distance_m",  "REAL"),
+                # Correlation columns — computed at log time
+                ("stroke_log", "watts",              "INTEGER"),
+                ("stroke_log", "peak_avg_ratio",     "REAL"),
+                # Pose columns — NULL until camera+pose pipeline is added
+                ("stroke_log", "catch_angle_deg",    "REAL"),
+                ("stroke_log", "layback_angle_deg",  "REAL"),
+                ("stroke_log", "arm_break_pct",      "REAL"),  # % through drive when arms bend
+                ("stroke_log", "video_ts",           "REAL"),  # wall-clock time of matching frame
                 ("sessions",   "user_id",            "INTEGER"),
                 ("sessions",   "workout_id",         "INTEGER"),
                 ("sessions",   "started_at",         "REAL"),
