@@ -39,68 +39,54 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 #screen-dots span.active { background:var(--blue); }
 #screen-label { font-size:12px; color:var(--label); text-align:center; margin-bottom:6px; }
 
-/* ── Swipeable screen area ── */
+/* ── Swipeable screen area — hosts the grid8 ── */
 #screen-wrap { flex:1; touch-action:pan-y; min-height:0; display:flex; flex-direction:column; }
 
-/* ── Hero metric (large centre value) ── */
-.hero-card { background:var(--card); border-radius:14px; padding:14px 10px 10px;
-             text-align:center; margin-bottom:8px; cursor:pointer; }
-.hero-card .lbl { font-size:12px; color:var(--label); text-transform:uppercase;
-                  letter-spacing:.08em; }
-.hero-card .val { font-size:clamp(52px,14vw,90px); font-weight:700; line-height:1.05; }
-.hero-card.pace-green .val { color:var(--green); }
-.hero-card.pace-red   .val { color:var(--red); }
-.hero-card.hr-card    .val { color:var(--hr-red); }
-
-/* ── Secondary metric grid ── */
-.metric-row { display:grid; gap:7px; margin-bottom:7px; }
-.metric-row.cols2 { grid-template-columns:1fr 1fr; }
-.metric-row.cols3 { grid-template-columns:1fr 1fr 1fr; }
-.card { background:var(--card); border-radius:12px; padding:10px 6px 8px;
-        text-align:center; cursor:pointer; }
-.card .lbl { font-size:11px; color:var(--label); text-transform:uppercase;
-             letter-spacing:.07em; }
-.card .val { font-size:clamp(22px,6vw,34px); font-weight:700; line-height:1.15; }
-.card .sub { font-size:11px; color:var(--label); margin-top:2px; }
-
-/* ── Zone strip (endurance screen) ── */
-#zone-strip { display:flex; height:14px; border-radius:4px; overflow:hidden; margin:6px 0; }
-#zone-strip span { flex:0 0 0%; height:100%; transition:flex .4s; }
-
-/* ── Technique screen ── */
-.tech-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; margin-bottom:7px; }
-.tech-card { background:var(--card); border-radius:10px; padding:10px 6px 8px; text-align:center; }
-.tech-card .lbl { font-size:10px; color:var(--label); text-transform:uppercase; }
-.tech-card .val { font-size:clamp(18px,5vw,28px); font-weight:700; }
-.tech-card .val.good  { color:var(--green); }
-.tech-card .val.warn  { color:var(--yellow); }
-.tech-card .val.bad   { color:var(--red); }
-
-/* ── Force curve screen ── */
-#force-wrap { background:var(--card); border-radius:14px; padding:12px; margin-bottom:8px; }
-#force-canvas { width:100%; height:160px; display:block; }
-#streak-wrap { background:var(--card); border-radius:12px; padding:14px;
-               text-align:center; margin-bottom:8px; }
-#streak-num  { font-size:clamp(42px,12vw,72px); font-weight:700; color:var(--green); }
-#streak-lbl  { font-size:13px; color:var(--label); margin-top:2px; }
-#streak-best { font-size:12px; color:var(--label); margin-top:4px; }
-
-/* ── Intervals screen ── */
-#iv-counter { background:var(--card); border-radius:14px; padding:16px 10px;
-              text-align:center; margin-bottom:8px; }
-#iv-num  { font-size:clamp(48px,13vw,80px); font-weight:700; line-height:1; }
-#iv-of   { font-size:16px; color:var(--label); margin-top:4px; }
-#iv-phase { font-size:18px; font-weight:700; margin-top:6px; }
-#iv-phase.work { color:var(--green); }
-#iv-phase.rest { color:var(--orange); }
-#iv-phase.done { color:var(--label); }
-#iv-progress-wrap { background:var(--card); border-radius:12px;
-                    padding:12px; margin-bottom:8px; overflow:hidden; }
-#iv-progress-bar { height:12px; border-radius:6px; background:var(--green);
-                   transition:width .5s; width:0%; }
-#iv-progress-bg  { height:12px; border-radius:6px; background:#2a2b3a; }
-#iv-remaining { font-size:clamp(32px,9vw,56px); font-weight:700;
-                text-align:center; margin-top:8px; }
+/* ── 8-cell grid system ── */
+/* 2 col × 4 row = 8 equal cells; cells span to fill 1/2/4/8 slots */
+.grid8 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: repeat(4, 1fr);
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+/* Metric cell */
+.mc {
+  background: var(--card);
+  border-radius: 12px;
+  padding: 8px 6px 6px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+  text-align: center;
+  min-height: 0;
+}
+.mc .lbl { font-size: 10px; color: var(--label); text-transform: uppercase;
+           letter-spacing: .07em; flex-shrink: 0; }
+.mc .val { font-size: clamp(20px, 5.5vw, 30px); font-weight: 700;
+           line-height: 1.1; flex-shrink: 0; }
+.mc .sub { font-size: 10px; color: var(--label); margin-top: 2px; flex-shrink: 0; }
+/* Span modifiers */
+.g2h { grid-column: span 2; }            /* full-width strip */
+.g2v { grid-row: span 2; }              /* tall half-width */
+.g4  { grid-column: span 2; grid-row: span 2; }  /* half-screen hero */
+.g8  { grid-column: span 2; grid-row: span 4; }  /* full-screen */
+/* Font scaling for larger cells */
+.g4 .val { font-size: clamp(52px, 14vw, 88px); }
+.g2v .val { font-size: clamp(30px, 8vw, 46px); }
+.g2h .val { font-size: clamp(26px, 7vw, 38px); }
+/* Colour states */
+.val.good  { color: var(--green); }
+.val.warn  { color: var(--yellow); }
+.val.bad   { color: var(--red); }
+.val.hr-color { color: var(--hr-red); }
+.val.pace-fast { color: var(--green); }
+.val.pace-slow { color: var(--red); }
 
 /* ── Target pace bar ── */
 #target-bar { display:none; background:#2a2a1e; border-left:4px solid var(--yellow);
@@ -109,10 +95,10 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 #target-bar.hidden { display:none !important; }
 
 /* ── Session buttons ── */
-#controls { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px; }
-#controls2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px; }
-button.btn { height:var(--btn-h); border:none; border-radius:10px;
-             font-size:18px; font-weight:700; cursor:pointer; width:100%; }
+#controls { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
+            margin-top:6px; flex-shrink:0; }
+button.btn { height:52px; border:none; border-radius:10px;
+             font-size:16px; font-weight:700; cursor:pointer; width:100%; }
 button.btn:active { opacity:.75; }
 button.btn:disabled { opacity:.35; cursor:default; }
 .btn-start   { background:#26b870; color:#fff; }
@@ -233,35 +219,34 @@ button.sm:active { opacity:.75; }
     <p id="resume-msg"></p>
     <div class="row">
       <button class="btn btn-start" style="height:46px;font-size:15px" onclick="doResume()">Resume</button>
-      <button class="btn btn-neutral" style="height:46px;font-size:15px" onclick="dismissResume()">Start New</button>
+      <button class="btn btn-neutral" style="height:46px;font-size:15px" onclick="dismissResume()">New</button>
     </div>
   </div>
 
   <div id="row-header">
     <div id="status">Ready</div>
-    <button id="ble-pill" onclick="openErgPicker()">
-      <span id="ble-dot" class="scanning"></span>
-      <span id="ble-text">Scanning…</span>
-    </button>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button id="ble-pill" onclick="openErgPicker()">
+        <span id="ble-dot" class="scanning"></span>
+        <span id="ble-text">Scanning…</span>
+      </button>
+      <button class="sm" id="btn-target" onclick="openTargetModal()" style="opacity:.6">⊕ Pace</button>
+    </div>
     <div id="screen-dots"></div>
   </div>
   <div id="screen-label"></div>
 
-  <div id="screen-wrap"><!-- rendered by renderScreen() --></div>
-
   <div id="target-bar" class="hidden">
     <span id="target-label"></span>
-    <button class="sm" onclick="clearTarget()">Clear</button>
+    <button class="sm" onclick="clearTarget()">✕</button>
   </div>
+
+  <div id="screen-wrap"><!-- filled by renderScreen() --></div>
 
   <div id="controls">
     <button class="btn btn-start" id="btn-start" onclick="doStart()">Start</button>
     <button class="btn btn-pause" id="btn-pause" onclick="doPause()" disabled>Pause</button>
     <button class="btn btn-end"   id="btn-end"   onclick="doEnd()"   disabled>End</button>
-  </div>
-  <div id="controls2">
-    <button class="btn btn-neutral" onclick="openTargetModal()">Target Pace</button>
-    <button class="btn btn-neutral" onclick="nav('workouts')">Workout</button>
   </div>
 </div>
 
@@ -477,7 +462,7 @@ function renderScreen() {
   if (_screen === 0) w.innerHTML = renderPower();
   else if (_screen === 1) w.innerHTML = renderEndurance();
   else if (_screen === 2) w.innerHTML = renderTechnique();
-  else if (_screen === 3) { w.innerHTML = renderForceCurveHTML(); drawForce(); }
+  else if (_screen === 3) { w.innerHTML = renderForceCurveHTML(); requestAnimationFrame(drawForce); }
   else if (_screen === 4) w.innerHTML = renderIntervals();
   bindFlipCards();
 }
@@ -494,44 +479,59 @@ function bindFlipCards() {
   });
 }
 
-// alt definitions keyed by slot name
-function alts_pace()  { return [{label:'Pace', value:()=>_s.pace}, {label:'SPM', value:()=>_s.spm??'--'}]; }
-function alts_dist()  { return [{label:'Dist m', value:()=>_s.distance_str}, {label:'Strokes', value:()=>_s.stroke_count??0}]; }
-function alts_time()  { return [{label:'Time', value:()=>_s.elapsed_str}, {label:'Drag', value:()=>_s.drag_factor??'--'}]; }
-function alts_spm()   { return [{label:'SPM', value:()=>_s.spm??'--'}, {label:'Interval', value:()=>_s.interval??'--'}]; }
-function alts_watts() { return [{label:'Watts', value:()=>_s.watts??0}, {label:'Avg Force', value:()=>fmtN(_s.avg_force_n)}]; }
-function alts_hr()    { return [{label:'HR', value:()=>_s.hr_bpm??'--'}, {label:'Calories', value:()=>'--'}]; }
+// ── Metric cell builder ───────────────────────────────────────────────────────
+// mc(key, alts, size) — size is a CSS class: 'g4' 'g2h' 'g2v' or '' (g1)
+function mc(key, alts, size='') {
+  const i = _flip[key] || 0;
+  const a = alts[i];
+  const valCls = a.cls ? a.cls() : '';
+  return `<div class="mc${size?' '+size:''}" data-flip="${key}" data-altlen="${alts.length}">
+    <div class="lbl">${a.label}</div>
+    <div class="val${valCls?' '+valCls:''}">${a.value()??'--'}</div>
+  </div>`;
+}
 
-function card(key, alts) {
-  const i = _flip[key] || 0;
-  const a = alts[i];
-  return `<div class="card" data-flip="${key}" data-altlen="${alts.length}">
-    <div class="lbl">${a.label}</div>
-    <div class="val">${a.value()??'--'}</div>
-  </div>`;
+// alt definitions keyed by slot name
+function paceClass() {
+  if (!_targetSec || !_s.pace_sec) return '';
+  return _s.pace_sec < _targetSec ? 'pace-fast' : 'pace-slow';
 }
-function heroCard(key, alts, extraClass='') {
-  const i = _flip[key] || 0;
-  const a = alts[i];
-  return `<div class="hero-card ${extraClass}" data-flip="${key}" data-altlen="${alts.length}">
-    <div class="lbl">${a.label}</div>
-    <div class="val">${a.value()??'--'}</div>
-  </div>`;
-}
+function alts_pace()  { return [
+  {label:'Pace',    value:()=>_s.pace??'--', cls:paceClass},
+  {label:'SPM',     value:()=>_s.spm??'--'},
+]; }
+function alts_dist()  { return [
+  {label:'Dist',    value:()=>_s.distance_str??'--'},
+  {label:'Strokes', value:()=>_s.stroke_count??0},
+]; }
+function alts_time()  { return [
+  {label:'Time',    value:()=>_s.elapsed_str??'--'},
+  {label:'Drag',    value:()=>_s.drag_factor??'--'},
+]; }
+function alts_spm()   { return [
+  {label:'SPM',     value:()=>_s.spm??'--'},
+  {label:'Stroke',  value:()=>_s.interval??'--'},
+]; }
+function alts_watts() { return [
+  {label:'Watts',   value:()=>_s.watts??0},
+  {label:'Avg N',   value:()=>fmtN(_s.avg_force_n)},
+]; }
+function alts_hr()    { return [
+  {label:'HR',      value:()=>_s.hr_bpm??'--'},
+  {label:'SPM',     value:()=>_s.spm??'--'},
+]; }
+
 
 // ── Screen 0: Power ───────────────────────────────────────────────────────────
+// Layout: [Watts g4] [Pace g1][SPM g1] [Dist g1][Time g1]  (4+4=8 cells)
 function renderPower() {
-  return `
-    ${heroCard('h-watts', alts_watts())}
-    <div class="metric-row cols3">
-      ${card('p-pace', alts_pace())}
-      ${card('p-spm', alts_spm())}
-      ${card('p-strokes', [{label:'Strokes', value:()=>_s.stroke_count??0},{label:'SPM',value:()=>_s.spm??'--'}])}
-    </div>
-    <div class="metric-row cols2">
-      ${card('p-dist', alts_dist())}
-      ${card('p-time', alts_time())}
-    </div>`;
+  return `<div class="grid8">
+    ${mc('h-watts', alts_watts(), 'g4')}
+    ${mc('p-pace',  alts_pace())}
+    ${mc('p-spm',   alts_spm())}
+    ${mc('p-dist',  alts_dist())}
+    ${mc('p-time',  alts_time())}
+  </div>`;
 }
 
 // ── Screen 1: Endurance ───────────────────────────────────────────────────────
@@ -551,27 +551,32 @@ function renderEndurance() {
   const zoneNames = ['Z1 Easy','Z2 Aerobic','Z3 Tempo','Z4 Threshold','Z5 Max'];
   const hrAlts = alts_hr();
   const hrFlip = _flip['h-hr'] || 0;
+  // Layout: [HR g4] [Pace][Dist] [Zone strip g2h]  (4+1+1+2=8 cells)
   let heroHtml;
   if (hrFlip === 0) {
     const hrStyle = zoneColor ? `style="color:${zoneColor}"` : '';
-    heroHtml = `<div class="hero-card hr-card" data-flip="h-hr" data-altlen="${hrAlts.length}">
+    heroHtml = `<div class="mc g4" data-flip="h-hr" data-altlen="${hrAlts.length}">
       <div class="lbl">HR</div>
-      <div class="val" ${hrStyle}>${hr??'--'}</div>
+      <div class="val hr-color" ${hrStyle}>${hr??'--'}</div>
       ${zone >= 0 ? `<div class="sub">${zoneNames[zone]}</div>` : ''}
     </div>`;
   } else {
-    heroHtml = heroCard('h-hr', hrAlts);
+    heroHtml = mc('h-hr', hrAlts, 'g4');
   }
-  return `
+  const zoneBar = `<div class="mc g2h" style="padding:10px 12px;align-items:stretch;justify-content:center;gap:6px">
+    <div style="display:flex;height:18px;border-radius:6px;overflow:hidden">
+      ${ZONE_COLORS.map((c,i)=>
+        `<span style="flex:${i===zone?'2':'1'};background:${c};opacity:${i===zone?1:.35}"></span>`
+      ).join('')}
+    </div>
+    ${zone>=0 ? `<div class="lbl">${zoneNames[zone]}</div>` : ''}
+  </div>`;
+  return `<div class="grid8">
     ${heroHtml}
-    <div id="zone-strip">${ZONE_COLORS.map((c,i)=>
-      `<span style="flex:${i===zone?'2':'1'};background:${c};opacity:${i===zone?1:.35}"></span>`
-    ).join('')}</div>
-    <div class="metric-row cols3">
-      ${card('e-pace', alts_pace())}
-      ${card('e-dist', alts_dist())}
-      ${card('e-time', alts_time())}
-    </div>`;
+    ${mc('e-pace', alts_pace())}
+    ${mc('e-dist', alts_dist())}
+    ${zoneBar}
+  </div>`;
 }
 
 // ── Screen 2: Technique ───────────────────────────────────────────────────────
@@ -613,49 +618,47 @@ function peakRatioClass() {
   const r = p/a;
   return r >= 1.3 && r <= 1.8 ? 'good' : r > 2.0 ? 'bad' : 'warn';
 }
+// Layout: 8 × g1 cells
 function renderTechnique() {
-  return `
-    <div class="tech-grid">
-      <div class="tech-card"><div class="lbl">Drive</div><div class="val">${_s.drive_time??'--'}</div></div>
-      <div class="tech-card"><div class="lbl">Recovery</div><div class="val">${_s.recovery??'--'}</div></div>
-      <div class="tech-card"><div class="lbl">Ratio</div><div class="val ${ratioClass()}">${driveRecoveryRatio()}</div></div>
-    </div>
-    <div class="tech-grid">
-      <div class="tech-card"><div class="lbl">Drive Length</div><div class="val">${_s.drive_length??'--'}</div></div>
-      <div class="tech-card"><div class="lbl">Expected</div><div class="val">${_s.expected_drive_cm ? _s.expected_drive_cm+'cm':'--'}</div></div>
-      <div class="tech-card"><div class="lbl">Delta</div><div class="val ${deltaClass()}">${driveDelta()}</div></div>
-    </div>
-    <div class="tech-grid">
-      <div class="tech-card"><div class="lbl">Peak Force</div><div class="val">${fmtN(_s.peak_force_n)}</div></div>
-      <div class="tech-card"><div class="lbl">Avg Force</div><div class="val">${fmtN(_s.avg_force_n)}</div></div>
-      <div class="tech-card"><div class="lbl">Peak/Avg</div><div class="val ${peakRatioClass()}">${peakRatio()}</div></div>
-    </div>
-    <div class="metric-row cols2">
-      <div class="tech-card"><div class="lbl">Drag Factor</div><div class="val">${_s.drag_factor??'--'}</div></div>
-      <div class="tech-card"><div class="lbl">SPM</div><div class="val">${_s.spm??'--'}</div></div>
-    </div>`;
+  const t = (lbl, val, cls='') =>
+    `<div class="mc"><div class="lbl">${lbl}</div><div class="val${cls?' '+cls:''}">${val??'--'}</div></div>`;
+  return `<div class="grid8">
+    ${t('Drive',    _s.drive_time??'--')}
+    ${t('Recovery', _s.recovery??'--')}
+    ${t('Ratio',    driveRecoveryRatio(), ratioClass())}
+    ${t('Dr Length',_s.drive_length??'--')}
+    ${t('Expected', _s.expected_drive_cm?_s.expected_drive_cm+'cm':'--')}
+    ${t('Delta',    driveDelta(), deltaClass())}
+    ${t('Peak N',   fmtN(_s.peak_force_n))}
+    ${t('Peak/Avg', peakRatio(), peakRatioClass())}
+  </div>`;
 }
 
 // ── Screen 3: Force Curve + Streak ────────────────────────────────────────────
+// Layout: [Canvas g4] [Streak g4]  (4+4=8 cells)
 function renderForceCurveHTML() {
   const streak = _s.perfect_streak ?? 0;
   const best   = _s.perfect_streak_best ?? 0;
-  return `
-    <div id="force-wrap">
-      <div class="lbl" style="font-size:11px;color:var(--label);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Drive Curve</div>
-      <canvas id="force-canvas"></canvas>
+  return `<div class="grid8">
+    <div class="mc g4" style="align-items:stretch;padding:10px 10px 8px">
+      <div class="lbl" style="text-align:left;margin-bottom:6px">Drive Curve</div>
+      <canvas id="force-canvas" style="flex:1;width:100%;min-height:0"></canvas>
     </div>
-    <div id="streak-wrap">
-      <div id="streak-num">${streak}</div>
-      <div id="streak-lbl">Perfect Stroke Streak</div>
-      <div id="streak-best">Best: ${best}</div>
-    </div>`;
+    <div class="mc g4" style="gap:4px">
+      <div class="lbl">Perfect Streak</div>
+      <div style="font-size:clamp(48px,13vw,80px);font-weight:700;color:var(--green);line-height:1">${streak}</div>
+      <div class="lbl">best ${best}</div>
+    </div>
+  </div>`;
 }
 function drawForce() {
   const canvas = document.getElementById('force-canvas');
   if (!canvas) return;
-  const W = canvas.offsetWidth || 300;
-  const H = 160;
+  // offsetWidth may be 0 on first paint; use parent or viewport fallback
+  const parent = canvas.parentElement;
+  const W = (parent?.clientWidth || window.innerWidth / 2) - 20;
+  const H = (parent?.clientHeight || 160) - 44;
+  if (W < 10 || H < 10) { requestAnimationFrame(drawForce); return; }
   canvas.width  = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
@@ -711,56 +714,51 @@ function drawForce() {
 }
 
 // ── Screen 4: Intervals ───────────────────────────────────────────────────────
+// Layout: [Counter g4] [Progress g2h] [Pace][Dist]  (4+2+1+1=8 cells)
 function renderIntervals() {
-  const idx      = (_s.interval_index ?? 0) + 1;
-  const total    = _s.interval_total  ?? 0;
-  const phase    = _s.interval_phase  ?? 'work';
-  const rem      = _s.interval_remaining;
-  const active   = _s.session_active;
+  const idx   = (_s.interval_index ?? 0) + 1;
+  const total = _s.interval_total  ?? 0;
+  const phase = _s.interval_phase  ?? 'work';
+  const rem   = _s.interval_remaining;
 
   if (!total) {
-    return `<div style="text-align:center;padding:40px 20px;color:var(--label)">
-      No workout selected.<br>Choose a workout from the Workouts tab.
+    return `<div class="grid8">
+      <div class="mc g8" style="color:var(--label);font-size:14px;line-height:1.6">
+        No workout selected.<br>Go to Workouts tab.
+      </div>
     </div>`;
   }
 
   const remStr = rem != null
-    ? (phase === 'work' || phase === 'rest' ? formatRem(rem, phase) : 'Done')
+    ? (phase === 'done' ? 'Done' : formatRem(rem, phase))
     : '--';
-
   const pct = rem != null && rem > 0
     ? Math.max(0, Math.min(100, 100 - (rem / estimateTotal(phase)) * 100))
     : (phase === 'done' ? 100 : 0);
-
+  const phaseColor = phase==='work' ? 'var(--green)' : phase==='rest' ? 'var(--orange)' : 'var(--label)';
   const phaseLabel = phase === 'work' ? 'WORK' : phase === 'rest' ? 'REST' : 'DONE';
 
-  return `
-    <div id="iv-counter">
-      <div id="iv-num">${idx}</div>
-      <div id="iv-of">of ${total} intervals</div>
-      <div id="iv-phase" class="${phase}">${phaseLabel}</div>
+  return `<div class="grid8">
+    <div class="mc g4" style="gap:4px">
+      <div style="font-size:clamp(48px,13vw,80px);font-weight:700;line-height:1">${idx}</div>
+      <div class="lbl">of ${total}</div>
+      <div style="font-size:16px;font-weight:700;color:${phaseColor}">${phaseLabel}</div>
     </div>
-    <div id="iv-progress-wrap">
-      <div id="iv-progress-bg">
-        <div id="iv-progress-bar" style="width:${pct}%;background:${phase==='rest'?'var(--orange)':'var(--green)'}"></div>
+    <div class="mc g2h" style="padding:10px 12px;gap:8px;align-items:stretch">
+      <div style="height:14px;border-radius:7px;background:#2a2b3a;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${phaseColor};border-radius:7px;transition:width .5s"></div>
       </div>
-      <div id="iv-remaining">${remStr}</div>
+      <div style="font-size:clamp(28px,8vw,42px);font-weight:700;text-align:center">${remStr}</div>
     </div>
-    <div class="metric-row cols2">
-      ${card('iv-pace', alts_pace())}
-      ${card('iv-dist', alts_dist())}
-    </div>`;
+    ${mc('iv-pace', alts_pace())}
+    ${mc('iv-dist', alts_dist())}
+  </div>`;
 }
 function formatRem(sec, phase) {
-  if (phase === 'work' && _s.active_workout_name) {
-    // If distance-based show metres remaining
-    const wid = _s.active_workout_id;
-    // sec is metres remaining for distance intervals, seconds for time
-    if (sec > 60) return `${sec}m`;
-  }
+  if (phase === 'work' && sec > 60) return `${sec}m`;
   return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
 }
-function estimateTotal(phase) { return 60; }  // rough divisor for progress bar
+function estimateTotal(phase) { return 60; }
 
 // ── BLE device selection ──────────────────────────────────────────────────────
 function updateBlePill(status, name, devices) {
