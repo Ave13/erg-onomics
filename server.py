@@ -4,9 +4,10 @@ FastAPI web server — primary UI entry point.
 Run:
     uvicorn server:app --host 0.0.0.0 --port 8501 --reload
 
-Open http://<UNO-Q-IP>:8501 in iPad Safari.
+Open http://erg.local:8501 (home WiFi) or http://10.0.0.1:8501 (ErgRower AP).
 """
 import sqlite3
+import subprocess
 import threading
 import time
 from datetime import datetime
@@ -31,6 +32,24 @@ from db.strive import calculate_strive_score, ZONE_COLORS, ZONE_NAMES, estimate_
 from db.streak import get_streak
 
 _DB_PATH = "rowing.db"
+
+# ── WiFi interface detection ──────────────────────────────────────────────────
+
+def _detect_wlan():
+    try:
+        out = subprocess.run(
+            ["nmcli", "-t", "-f", "DEVICE,TYPE", "dev"],
+            capture_output=True, text=True, timeout=5
+        ).stdout
+        for line in out.splitlines():
+            dev, _, typ = line.partition(":")
+            if typ.strip() == "wifi":
+                return dev.strip()
+    except Exception:
+        pass
+    return "wlan0"
+
+_WLAN = _detect_wlan()
 
 app = FastAPI()
 
@@ -441,6 +460,115 @@ def api_set_plan(day: int, body: PlanBody):
 def api_clear_plan(day: int):
     clear_day(day)
     return {"ok": True}
+
+
+# ── WiFi management ──────────────────────────────────────────────────────────
+
+def _nmcli(*args, timeout=15):
+    return subprocess.run(
+        ["sudo", "nmcli"] + list(args),
+        capture_output=True, text=True, timeout=timeout
+    )
+
+
+@app.get("/api/wifi/status")
+def api_wifi_status():
+    try:
+        out = _nmcli("-t", "-f",
+                     "GENERAL.CONNECTION,IP4.ADDRESS[1],GENERAL.STATE",
+                     "dev", "show", _WLAN, timeout=5).stdout
+        info = {}
+        for line in out.splitlines():
+            k, _, v = line.partition(":")
+            info[k.strip()] = v.strip()
+        connection = info.get("GENERAL.CONNECTION", "")
+        ip = info.get("IP4.ADDRESS[1]", "").split("/")[0]
+        return {
+            "connection": connection,
+            "ip": ip,
+            "ap_mode": connection == "ErgRower",
+            "interface": _WLAN,
+        }
+    except Exception:
+        return {"connection": "", "ip": "", "ap_mode": False, "interface": _WLAN}
+
+
+@app.get("/api/wifi/scan")
+def api_wifi_scan():
+    try:
+        out = _nmcli("-t", "-f", "SSID,SIGNAL,SECURITY",
+                     "dev", "wifi", "list",
+                     "ifname", _WLAN, "--rescan", "yes", timeout=20).stdout
+        seen, networks = set(), []
+        for line in out.splitlines():
+            # nmcli -t escapes ':' as '\:' in values
+            parts = line.replace("\\:", "\x00").split(":")
+            parts = [p.replace("\x00", ":") for p in parts]
+            if len(parts) < 2:
+                continue
+            ssid = parts[0].strip()
+            if not ssid or ssid in seen:
+                continue
+            seen.add(ssid)
+            networks.append({
+                "ssid":     ssid,
+                "signal":   int(parts[1]) if parts[1].isdigit() else 0,
+                "security": parts[2].strip() if len(parts) > 2 else "",
+            })
+        networks.sort(key=lambda x: -x["signal"])
+        return {"networks": networks}
+    except Exception:
+        return {"networks": []}
+
+
+class WifiConnectBody(BaseModel):
+    ssid: str
+    password: str = ""
+
+@app.post("/api/wifi/connect")
+def api_wifi_connect(body: WifiConnectBody):
+    try:
+        args = ["dev", "wifi", "connect", body.ssid]
+        if body.password:
+            args += ["password", body.password]
+        args += ["ifname", _WLAN]
+        result = _nmcli(*args, timeout=30)
+        ok = result.returncode == 0
+        msg = result.stdout.strip() if ok else (result.stderr.strip() or result.stdout.strip())
+        return {"ok": ok, "message": msg}
+    except subprocess.TimeoutExpired:
+        return {"ok": False, "message": "Connection timed out — wrong password?"}
+    except Exception as e:
+        return {"ok": False, "message": str(e)}
+
+
+@app.get("/api/wifi/saved")
+def api_wifi_saved():
+    try:
+        out = _nmcli("-t", "-f", "NAME,TYPE,DEVICE", "con", "show", timeout=5).stdout
+        networks = []
+        for line in out.splitlines():
+            parts = line.split(":")
+            if len(parts) >= 2 and "wireless" in parts[1] and parts[0] != "ErgRower":
+                networks.append({
+                    "ssid":      parts[0],
+                    "connected": len(parts) > 2 and parts[2] not in ("", "--"),
+                })
+        return {"networks": networks}
+    except Exception:
+        return {"networks": []}
+
+
+class WifiForgetBody(BaseModel):
+    ssid: str
+
+@app.post("/api/wifi/forget")
+def api_wifi_forget(body: WifiForgetBody):
+    try:
+        r = _nmcli("con", "delete", body.ssid, timeout=10)
+        return {"ok": r.returncode == 0}
+    except Exception:
+        return {"ok": False}
 
 
 # ── BLE device selection ─────────────────────────────────────────────────────

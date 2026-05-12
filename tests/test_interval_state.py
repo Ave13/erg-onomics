@@ -3,11 +3,15 @@ Tests for _update_interval_state() in server.py.
 
 server.py starts BLE/FTMS threads at import time, so we mock those
 entry points before importing.
+
+Requires fastapi and uvicorn to be installed; skipped otherwise.
 """
 import sys
 import types
 from unittest.mock import MagicMock, patch
 import pytest
+
+fastapi = pytest.importorskip("fastapi", reason="fastapi not installed")
 
 
 def _make_fake_pm5_state():
