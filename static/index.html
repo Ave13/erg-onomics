@@ -224,7 +224,7 @@ button.sm:active { opacity:.75; }
   <button onclick="nav('history')">History</button>
   <button onclick="nav('workouts')">Workouts</button>
   <button onclick="nav('plan')">Plan</button>
-  <button onclick="nav('profile')">Profile</button>
+  <button onclick="nav('profile')">Setup</button>
 </div>
 
 <!-- ══ ROW PAGE ══════════════════════════════════════════════════════════════ -->
@@ -326,8 +326,54 @@ button.sm:active { opacity:.75; }
   <div id="plan-grid"></div>
 </div>
 
-<!-- ══ PROFILE PAGE ═════════════════════════════════════════════════════════ -->
+<!-- ══ SETUP PAGE (Profile + Connections) ══════════════════════════════════ -->
 <div id="page-profile" class="page">
+
+  <!-- ── Connections ── -->
+  <h3>Connections</h3>
+
+  <!-- Erg / BLE card -->
+  <div onclick="openErgPicker()" style="background:var(--card);border-radius:12px;
+       padding:14px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:12px">
+    <span id="ble-card-dot" style="width:11px;height:11px;border-radius:50%;
+          background:var(--label);flex-shrink:0"></span>
+    <div style="flex:1">
+      <div style="font-size:11px;color:var(--label);text-transform:uppercase;letter-spacing:.07em">Erg · Bluetooth</div>
+      <div id="ble-card-text" style="font-size:16px;font-weight:600;margin-top:3px">Scanning…</div>
+    </div>
+    <span style="color:var(--label);font-size:22px">›</span>
+  </div>
+
+  <!-- WiFi card -->
+  <div style="background:var(--card);border-radius:12px;padding:14px;margin-bottom:16px">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
+      <span id="wifi-dot" style="width:11px;height:11px;border-radius:50%;
+            background:var(--label);flex-shrink:0"></span>
+      <div>
+        <div style="font-size:11px;color:var(--label);text-transform:uppercase;letter-spacing:.07em">WiFi</div>
+        <div id="wifi-status-txt" style="font-size:16px;font-weight:600;margin-top:3px">Checking…</div>
+      </div>
+    </div>
+    <div id="wifi-saved-wrap"></div>
+    <button class="btn btn-neutral" style="height:46px;font-size:14px;margin-bottom:6px"
+            onclick="wifiScan()">Scan for Networks</button>
+    <div id="wifi-scan-list"></div>
+    <div id="wifi-join-wrap" style="display:none">
+      <div class="form-row" style="margin-top:8px">
+        <label id="wifi-join-label">Password for …</label>
+        <input id="wifi-pwd" type="password" placeholder="WiFi password" autocomplete="off"
+               style="width:100%;height:46px;background:#111118;color:var(--value);
+                      border:1px solid #2a2b3a;border-radius:8px;padding:0 12px;font-size:16px">
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-neutral" style="height:46px" onclick="wifiJoinCancel()">Cancel</button>
+        <button class="btn btn-start"   style="height:46px" onclick="wifiJoinConfirm()">Join</button>
+      </div>
+    </div>
+    <div id="wifi-msg" style="font-size:13px;min-height:18px;margin-top:6px"></div>
+  </div>
+
+  <!-- ── Profile ── -->
   <h3>Profile</h3>
   <div class="form-row"><label>Name</label><input id="p-name" type="text" placeholder="Your name"></div>
   <div class="form-row"><label>Weight (kg)</label><input id="p-weight" type="number" step="0.5" min="30" max="200"></div>
@@ -441,19 +487,11 @@ function bindFlipCards() {
   document.querySelectorAll('[data-flip]').forEach(el => {
     el.onclick = () => {
       const key = el.dataset.flip;
-      const alts = JSON.parse(el.dataset.alts);
-      _flip[key] = ((_flip[key] || 0) + 1) % alts.length;
-      updateFlipCard(el, alts[_flip[key]]);
+      const len = parseInt(el.dataset.altlen) || 1;
+      _flip[key] = ((_flip[key] || 0) + 1) % len;
+      renderScreen();
     };
   });
-}
-function flipVal(key, alts) {
-  const i = _flip[key] || 0;
-  return alts[i];
-}
-function updateFlipCard(el, alt) {
-  el.querySelector('.lbl').textContent = alt.label;
-  el.querySelector('.val').textContent = alt.value()||'--';
 }
 
 // alt definitions keyed by slot name
@@ -464,10 +502,10 @@ function alts_spm()   { return [{label:'SPM', value:()=>_s.spm??'--'}, {label:'I
 function alts_watts() { return [{label:'Watts', value:()=>_s.watts??0}, {label:'Avg Force', value:()=>fmtN(_s.avg_force_n)}]; }
 function alts_hr()    { return [{label:'HR', value:()=>_s.hr_bpm??'--'}, {label:'Calories', value:()=>'--'}]; }
 
-function card(key, alts, extra='') {
+function card(key, alts) {
   const i = _flip[key] || 0;
   const a = alts[i];
-  return `<div class="card${extra}" data-flip="${key}" data-alts='${JSON.stringify(alts)}'>
+  return `<div class="card" data-flip="${key}" data-altlen="${alts.length}">
     <div class="lbl">${a.label}</div>
     <div class="val">${a.value()??'--'}</div>
   </div>`;
@@ -475,7 +513,7 @@ function card(key, alts, extra='') {
 function heroCard(key, alts, extraClass='') {
   const i = _flip[key] || 0;
   const a = alts[i];
-  return `<div class="hero-card ${extraClass}" data-flip="${key}" data-alts='${JSON.stringify(alts)}'>
+  return `<div class="hero-card ${extraClass}" data-flip="${key}" data-altlen="${alts.length}">
     <div class="lbl">${a.label}</div>
     <div class="val">${a.value()??'--'}</div>
   </div>`;
@@ -484,15 +522,15 @@ function heroCard(key, alts, extraClass='') {
 // ── Screen 0: Power ───────────────────────────────────────────────────────────
 function renderPower() {
   return `
-    ${heroCard('watts', alts_watts())}
+    ${heroCard('h-watts', alts_watts())}
     <div class="metric-row cols3">
-      ${card('pace','p0',alts_pace())}
-      ${card('spm','p1',alts_spm())}
-      ${card('strokes','p2',[{label:'Strokes', value:()=>_s.stroke_count??0},{label:'SPM',value:()=>_s.spm??'--'}])}
+      ${card('p-pace', alts_pace())}
+      ${card('p-spm', alts_spm())}
+      ${card('p-strokes', [{label:'Strokes', value:()=>_s.stroke_count??0},{label:'SPM',value:()=>_s.spm??'--'}])}
     </div>
     <div class="metric-row cols2">
-      ${card('dist','p3',alts_dist())}
-      ${card('time','p4',alts_time())}
+      ${card('p-dist', alts_dist())}
+      ${card('p-time', alts_time())}
     </div>`;
 }
 
@@ -511,20 +549,28 @@ function renderEndurance() {
     zoneColor = ZONE_COLORS[zone];
   }
   const zoneNames = ['Z1 Easy','Z2 Aerobic','Z3 Tempo','Z4 Threshold','Z5 Max'];
-  const hrStyle = zoneColor ? `style="color:${zoneColor}"` : '';
-  return `
-    <div class="hero-card hr-card" data-flip="hr" data-alts='${JSON.stringify(alts_hr())}'>
+  const hrAlts = alts_hr();
+  const hrFlip = _flip['h-hr'] || 0;
+  let heroHtml;
+  if (hrFlip === 0) {
+    const hrStyle = zoneColor ? `style="color:${zoneColor}"` : '';
+    heroHtml = `<div class="hero-card hr-card" data-flip="h-hr" data-altlen="${hrAlts.length}">
       <div class="lbl">HR</div>
       <div class="val" ${hrStyle}>${hr??'--'}</div>
       ${zone >= 0 ? `<div class="sub">${zoneNames[zone]}</div>` : ''}
-    </div>
+    </div>`;
+  } else {
+    heroHtml = heroCard('h-hr', hrAlts);
+  }
+  return `
+    ${heroHtml}
     <div id="zone-strip">${ZONE_COLORS.map((c,i)=>
       `<span style="flex:${i===zone?'2':'1'};background:${c};opacity:${i===zone?1:.35}"></span>`
     ).join('')}</div>
     <div class="metric-row cols3">
-      ${card('e-pace','e0',alts_pace())}
-      ${card('e-dist','e1',alts_dist())}
-      ${card('e-time','e2',alts_time())}
+      ${card('e-pace', alts_pace())}
+      ${card('e-dist', alts_dist())}
+      ${card('e-time', alts_time())}
     </div>`;
 }
 
@@ -701,8 +747,8 @@ function renderIntervals() {
       <div id="iv-remaining">${remStr}</div>
     </div>
     <div class="metric-row cols2">
-      ${card('iv-pace','ip0',alts_pace())}
-      ${card('iv-dist','ip1',alts_dist())}
+      ${card('iv-pace', alts_pace())}
+      ${card('iv-dist', alts_dist())}
     </div>`;
 }
 function formatRem(sec, phase) {
@@ -721,24 +767,35 @@ function updateBlePill(status, name, devices) {
   _bleDevices = devices || [];
   const dot = document.getElementById('ble-dot');
   const txt = document.getElementById('ble-text');
-  if (!dot) return;
-  dot.className = status;
+  const cardDot = document.getElementById('ble-card-dot');
+  const cardTxt = document.getElementById('ble-card-text');
+
   const labels = {
     scanning:    'Scanning…',
     found:       'Select Erg',
     connecting:  'Connecting…',
     connected:   name || 'Connected',
-    disconnected:'Disconnected',
+    disconnected:'Reconnecting…',
   };
-  txt.textContent = labels[status] || status;
+  const dotColors = {
+    scanning: 'var(--label)', found: 'var(--blue)', connecting: 'var(--yellow)',
+    connected: 'var(--green)', disconnected: 'var(--red)',
+  };
+  const label = labels[status] || status;
+
+  if (dot) { dot.className = status; }
+  if (txt) { txt.textContent = label; }
+  if (cardDot) {
+    cardDot.style.background = dotColors[status] || 'var(--label)';
+    cardDot.style.animation = status === 'connected' ? '' : 'blink 1.5s infinite';
+  }
+  if (cardTxt) { cardTxt.textContent = label; }
 
   if (status === 'found') {
-    // If we have a saved preference that matches a found device, auto-connect
     if (_bleAddress) {
       const match = _bleDevices.find(d => d.address === _bleAddress);
       if (match) { selectErg(match.address, match.name); return; }
     }
-    // Otherwise show the picker
     openErgPicker();
   }
 }
