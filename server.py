@@ -58,8 +58,73 @@ def index():
 
 # ── Live state ────────────────────────────────────────────────────────────────
 
+def _update_interval_state():
+    """Track which interval the rower is in based on active workout definition."""
+    wid = state.get("active_workout_id")
+    if not wid or not state.get("session_active"):
+        state["interval_index"] = 0
+        state["interval_phase"] = "work"
+        state["interval_remaining"] = None
+        return
+    w = get_workout(wid)
+    if not w:
+        return
+    intervals = w[2].get("intervals", [])
+    if not intervals:
+        return
+
+    dist    = state.get("distance", 0)
+    elapsed = state.get("elapsed", 0)
+    cumulative_dist = 0.0
+    cumulative_time = 0.0
+
+    for i, iv in enumerate(intervals):
+        iv_type = iv.get("type")
+        rest    = iv.get("rest_secs", 0)
+
+        if iv_type == "distance":
+            work_end = cumulative_dist + iv.get("meters", 0)
+            if dist < work_end:
+                state["interval_index"] = i
+                state["interval_phase"] = "work"
+                state["interval_remaining"] = round(work_end - dist)
+                return
+            cumulative_dist = work_end
+            # rest phase (time-based)
+            if rest > 0:
+                rest_end = cumulative_time + rest
+                if elapsed < rest_end:
+                    state["interval_index"] = i
+                    state["interval_phase"] = "rest"
+                    state["interval_remaining"] = round(rest_end - elapsed)
+                    return
+                cumulative_time += rest
+
+        elif iv_type == "time":
+            work_end = cumulative_time + iv.get("seconds", 0)
+            if elapsed < work_end:
+                state["interval_index"] = i
+                state["interval_phase"] = "work"
+                state["interval_remaining"] = round(work_end - elapsed)
+                return
+            cumulative_time = work_end
+            if rest > 0:
+                rest_end = cumulative_time + rest
+                if elapsed < rest_end:
+                    state["interval_index"] = i
+                    state["interval_phase"] = "rest"
+                    state["interval_remaining"] = round(rest_end - elapsed)
+                    return
+                cumulative_time += rest
+
+    state["interval_index"] = len(intervals) - 1
+    state["interval_phase"] = "done"
+    state["interval_remaining"] = 0
+
+
 @app.get("/api/state")
 def api_state():
+    _update_interval_state()
     s = dict(state)
     s["hr_bpm"] = s["hr_bpm"] if isinstance(s["hr_bpm"], int) else None
     s["spm"]    = s["spm"]    if isinstance(s["spm"], int)    else None
@@ -74,6 +139,13 @@ def api_state():
         s["pace_color"] = "green" if current <= target * 1.02 else "red"
     else:
         s["pace_color"] = ""
+    # Total intervals count for display
+    wid = state.get("active_workout_id")
+    if wid:
+        w = get_workout(wid)
+        s["interval_total"] = len(w[2].get("intervals", [])) if w else 0
+    else:
+        s["interval_total"] = 0
     return JSONResponse(s)
 
 
@@ -225,6 +297,63 @@ def api_summary(session_id: int):
     }
 
 
+@app.get("/api/summary/{session_id}/splits")
+def api_splits(session_id: int):
+    """500m split breakdown for a session."""
+    with sqlite3.connect(_DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT elapsed_secs, speed_mm_s, hr_bpm "
+            "FROM stroke_log WHERE session_id=? AND speed_mm_s > 0 "
+            "ORDER BY elapsed_secs",
+            (session_id,)
+        ).fetchall()
+        sess = conn.execute(
+            "SELECT avg_pace FROM sessions WHERE id=?", (session_id,)
+        ).fetchone()
+
+    if not rows:
+        return []
+
+    session_avg_pace = sess[0] if sess else None
+    split_m = 500
+    splits = []
+    bucket: list = []
+    bucket_start_dist = 0.0
+    running_dist = 0.0
+
+    prev_elapsed = 0.0
+    for elapsed, speed_mm_s, hr in rows:
+        dt = elapsed - prev_elapsed
+        prev_elapsed = elapsed
+        if dt <= 0 or speed_mm_s <= 0:
+            continue
+        d = speed_mm_s / 1000 * dt
+        running_dist += d
+        bucket.append((elapsed, speed_mm_s, hr, dt))
+
+        if running_dist - bucket_start_dist >= split_m:
+            speeds  = [r[1] for r in bucket]
+            hrs     = [r[2] for r in bucket if r[2]]
+            dts     = [r[3] for r in bucket]
+            avg_sp  = sum(speeds) / len(speeds)
+            pace    = round(500 / (avg_sp / 1000)) if avg_sp > 0 else 0
+            split_t = round(sum(dts))
+            splits.append({
+                "n":        len(splits) + 1,
+                "dist":     f"{split_m}m",
+                "pace":     _pace_str(pace),
+                "pace_sec": pace,
+                "time":     _time_str(split_t),
+                "avg_hr":   round(sum(hrs) / len(hrs)) if hrs else None,
+                "pace_vs_avg": "fast" if session_avg_pace and pace < session_avg_pace
+                               else ("slow" if session_avg_pace and pace > session_avg_pace else ""),
+            })
+            bucket = []
+            bucket_start_dist = running_dist
+
+    return splits
+
+
 # ── History ───────────────────────────────────────────────────────────────────
 
 @app.get("/api/history")
@@ -311,6 +440,28 @@ def api_set_plan(day: int, body: PlanBody):
 @app.delete("/api/plan/{day}")
 def api_clear_plan(day: int):
     clear_day(day)
+    return {"ok": True}
+
+
+# ── BLE device selection ─────────────────────────────────────────────────────
+
+@app.get("/api/ble/devices")
+def api_ble_devices():
+    return {
+        "status":  state.get("ble_status", "scanning"),
+        "devices": state.get("ble_devices", []),
+        "address": state.get("ble_address"),
+        "name":    state.get("ble_name"),
+    }
+
+
+class BleConnectBody(BaseModel):
+    address: str
+
+@app.post("/api/ble/connect")
+def api_ble_connect(body: BleConnectBody):
+    """Set the preferred erg address. The BLE loop picks it up within 500 ms."""
+    state["ble_address"] = body.address
     return {"ok": True}
 
 
