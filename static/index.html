@@ -412,6 +412,7 @@ let _active = false, _paused = false;
 let _resumeId = null;
 let _targetSec = null;
 let _screen = parseInt(localStorage.getItem('screen') || '0');
+let _lastScreen = -1;   // tracks which screen's HTML is currently in the DOM
 let _paceChart = null, _forceChart = null;
 let _touchStartX = 0;
 // Tap-to-flip: which alternate is showing for each slot
@@ -452,6 +453,7 @@ document.getElementById('screen-wrap').addEventListener('touchend', e => {
   if (dx < 0 && _screen < SCREENS.length - 1) _screen++;
   else if (dx > 0 && _screen > 0)             _screen--;
   localStorage.setItem('screen', _screen);
+  _lastScreen = -1;  // force full rebuild on screen change
   renderDots();
   renderScreen();
 }, {passive:true});
@@ -459,10 +461,25 @@ document.getElementById('screen-wrap').addEventListener('touchend', e => {
 // ── Render current screen ─────────────────────────────────────────────────────
 function renderScreen() {
   const w = document.getElementById('screen-wrap');
+  const changed = _screen !== _lastScreen;
+  _lastScreen = _screen;
+
+  if (_screen === 3) {
+    // Force curve: only rebuild DOM when first arriving; update in-place each tick
+    if (changed) { w.innerHTML = renderForceCurveHTML(); bindFlipCards(); }
+    else {
+      const sn = document.getElementById('fc-streak-num');
+      const sb = document.getElementById('fc-streak-best');
+      if (sn) sn.textContent = _s.perfect_streak ?? 0;
+      if (sb) sb.textContent = 'best ' + (_s.perfect_streak_best ?? 0);
+    }
+    requestAnimationFrame(drawForce);
+    return;
+  }
+
   if (_screen === 0) w.innerHTML = renderPower();
   else if (_screen === 1) w.innerHTML = renderEndurance();
   else if (_screen === 2) w.innerHTML = renderTechnique();
-  else if (_screen === 3) { w.innerHTML = renderForceCurveHTML(); requestAnimationFrame(drawForce); }
   else if (_screen === 4) w.innerHTML = renderIntervals();
   bindFlipCards();
 }
@@ -642,22 +659,21 @@ function renderForceCurveHTML() {
   return `<div class="grid8">
     <div class="mc g4" style="align-items:stretch;padding:10px 10px 8px">
       <div class="lbl" style="text-align:left;margin-bottom:6px">Drive Curve</div>
-      <canvas id="force-canvas" style="flex:1;width:100%;min-height:0"></canvas>
+      <canvas id="force-canvas" style="display:block;width:100%;flex:1;min-height:0"></canvas>
     </div>
     <div class="mc g4" style="gap:4px">
       <div class="lbl">Perfect Streak</div>
-      <div style="font-size:clamp(48px,13vw,80px);font-weight:700;color:var(--green);line-height:1">${streak}</div>
-      <div class="lbl">best ${best}</div>
+      <div id="fc-streak-num" style="font-size:clamp(48px,13vw,80px);font-weight:700;color:var(--green);line-height:1">${streak}</div>
+      <div id="fc-streak-best" class="lbl">best ${best}</div>
     </div>
   </div>`;
 }
 function drawForce() {
   const canvas = document.getElementById('force-canvas');
   if (!canvas) return;
-  // offsetWidth may be 0 on first paint; use parent or viewport fallback
-  const parent = canvas.parentElement;
-  const W = (parent?.clientWidth || window.innerWidth / 2) - 20;
-  const H = (parent?.clientHeight || 160) - 44;
+  const rect = canvas.getBoundingClientRect();
+  const W = Math.round(rect.width);
+  const H = Math.round(rect.height);
   if (W < 10 || H < 10) { requestAnimationFrame(drawForce); return; }
   canvas.width  = W;
   canvas.height = H;
