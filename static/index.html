@@ -1195,6 +1195,91 @@ async function setPlan(day) {
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────
+// ── WiFi ─────────────────────────────────────────────────────────────────────
+let _wifiJoinSsid = '';
+let _wifiJoinSecured = false;
+
+async function loadWifi() {
+  try {
+    const s = await fetch('/api/wifi/status').then(r=>r.json());
+    document.getElementById('wifi-dot').style.background = s.connected ? '#30d158' : 'var(--label)';
+    document.getElementById('wifi-status-txt').textContent = s.connected ? s.ssid : 'Not connected';
+  } catch(e) {
+    document.getElementById('wifi-status-txt').textContent = 'Unavailable';
+  }
+}
+
+async function wifiScan() {
+  const list = document.getElementById('wifi-scan-list');
+  document.getElementById('wifi-msg').textContent = '';
+  list.innerHTML = '<div style="color:var(--label);font-size:13px;padding:6px 0">Scanning…</div>';
+  try {
+    const nets = await fetch('/api/wifi/scan').then(r=>r.json());
+    if (!nets.length) {
+      list.innerHTML = '<div style="color:var(--label);font-size:13px;padding:6px 0">No networks found.</div>';
+      return;
+    }
+    list.innerHTML = nets.map(n => {
+      const ssidSafe = n.ssid.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      return `<div onclick="wifiSelect('${ssidSafe}',${n.secured})"
+        style="padding:10px 12px;background:#111118;border-radius:8px;margin-bottom:6px;
+               display:flex;align-items:center;justify-content:space-between;cursor:pointer">
+        <span style="font-size:15px;font-weight:500">${n.ssid}</span>
+        <span style="font-size:12px;color:var(--label)">${n.signal}%${n.secured?' 🔒':''}</span>
+      </div>`;
+    }).join('');
+  } catch(e) {
+    list.innerHTML = '<div style="color:#ff453a;font-size:13px">Scan failed.</div>';
+  }
+}
+
+function wifiSelect(ssid, secured) {
+  _wifiJoinSsid = ssid;
+  _wifiJoinSecured = secured;
+  document.getElementById('wifi-join-label').textContent =
+    secured ? `Password for "${ssid}"` : `Join "${ssid}" (open network)`;
+  const pwd = document.getElementById('wifi-pwd');
+  pwd.style.display = secured ? '' : 'none';
+  pwd.value = '';
+  document.getElementById('wifi-join-wrap').style.display = '';
+  document.getElementById('wifi-msg').textContent = '';
+}
+
+function wifiJoinCancel() {
+  document.getElementById('wifi-join-wrap').style.display = 'none';
+  _wifiJoinSsid = '';
+}
+
+async function wifiJoinConfirm() {
+  const msg = document.getElementById('wifi-msg');
+  const pwd = document.getElementById('wifi-pwd').value;
+  if (_wifiJoinSecured && !pwd) { msg.textContent = 'Password required.'; return; }
+  msg.style.color = 'var(--label)';
+  msg.textContent = 'Connecting…';
+  const body = { ssid: _wifiJoinSsid };
+  if (_wifiJoinSecured && pwd) body.password = pwd;
+  try {
+    const r = await fetch('/api/wifi/connect', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify(body)
+    }).then(r=>r.json());
+    if (r.ok) {
+      msg.style.color = '#30d158';
+      msg.textContent = `Connected to ${_wifiJoinSsid}`;
+      document.getElementById('wifi-join-wrap').style.display = 'none';
+      document.getElementById('wifi-scan-list').innerHTML = '';
+      loadWifi();
+    } else {
+      msg.style.color = '#ff453a';
+      msg.textContent = r.error || 'Connection failed.';
+    }
+  } catch(e) {
+    msg.style.color = '#ff453a';
+    msg.textContent = 'Request failed.';
+  }
+}
+
 async function loadProfile() {
   const p=await fetch('/api/profile').then(r=>r.json());
   if(p.name)      document.getElementById('p-name').value=p.name;
