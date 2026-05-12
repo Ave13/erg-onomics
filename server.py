@@ -305,7 +305,7 @@ def api_splits(session_id: int):
     """500m split breakdown for a session."""
     with sqlite3.connect(_DB_PATH) as conn:
         rows = conn.execute(
-            "SELECT elapsed_secs, speed_mm_s, hr_bpm "
+            "SELECT elapsed_secs, speed_mm_s, hr_bpm, watts, peak_avg_ratio "
             "FROM stroke_log WHERE session_id=? AND speed_mm_s > 0 "
             "ORDER BY elapsed_secs",
             (session_id,)
@@ -325,29 +325,33 @@ def api_splits(session_id: int):
     running_dist = 0.0
 
     prev_elapsed = 0.0
-    for elapsed, speed_mm_s, hr in rows:
+    for elapsed, speed_mm_s, hr, watts, peak_avg_ratio in rows:
         dt = elapsed - prev_elapsed
         prev_elapsed = elapsed
         if dt <= 0 or speed_mm_s <= 0:
             continue
         d = speed_mm_s / 1000 * dt
         running_dist += d
-        bucket.append((elapsed, speed_mm_s, hr, dt))
+        bucket.append((elapsed, speed_mm_s, hr, dt, watts, peak_avg_ratio))
 
         if running_dist - bucket_start_dist >= split_m:
-            speeds  = [r[1] for r in bucket]
-            hrs     = [r[2] for r in bucket if r[2]]
-            dts     = [r[3] for r in bucket]
-            avg_sp  = sum(speeds) / len(speeds)
-            pace    = round(500 / (avg_sp / 1000)) if avg_sp > 0 else 0
-            split_t = round(sum(dts))
+            speeds   = [r[1] for r in bucket]
+            hrs      = [r[2] for r in bucket if r[2]]
+            dts      = [r[3] for r in bucket]
+            wattses  = [r[4] for r in bucket if r[4]]
+            ratios   = [r[5] for r in bucket if r[5]]
+            avg_sp   = sum(speeds) / len(speeds)
+            pace     = round(500 / (avg_sp / 1000)) if avg_sp > 0 else 0
+            split_t  = round(sum(dts))
             splits.append({
-                "n":        len(splits) + 1,
-                "dist":     f"{split_m}m",
-                "pace":     _pace_str(pace),
-                "pace_sec": pace,
-                "time":     _time_str(split_t),
-                "avg_hr":   round(sum(hrs) / len(hrs)) if hrs else None,
+                "n":           len(splits) + 1,
+                "dist":        f"{split_m}m",
+                "pace":        _pace_str(pace),
+                "pace_sec":    pace,
+                "time":        _time_str(split_t),
+                "avg_hr":      round(sum(hrs) / len(hrs)) if hrs else None,
+                "avg_watts":   round(sum(wattses) / len(wattses)) if wattses else None,
+                "avg_ratio":   round(sum(ratios) / len(ratios), 2) if ratios else None,
                 "pace_vs_avg": "fast" if session_avg_pace and pace < session_avg_pace
                                else ("slow" if session_avg_pace and pace > session_avg_pace else ""),
             })
@@ -355,6 +359,35 @@ def api_splits(session_id: int):
             bucket_start_dist = running_dist
 
     return splits
+
+
+@app.get("/api/summary/{session_id}/strokes")
+def api_strokes(session_id: int):
+    """Per-stroke data for correlation analysis and future video frame sync."""
+    with sqlite3.connect(_DB_PATH) as conn:
+        rows = conn.execute(
+            "SELECT elapsed_secs, speed_mm_s, drive_length_cm, drive_time_secs, "
+            "       recovery_secs, peak_force_n, avg_force_n, "
+            "       watts, peak_avg_ratio, hr_bpm, logged_at "
+            "FROM stroke_log WHERE session_id=? ORDER BY elapsed_secs",
+            (session_id,)
+        ).fetchall()
+    return [
+        {
+            "elapsed":       r[0],
+            "pace_sec":      round(500_000 / r[1]) if r[1] and r[1] > 0 else None,
+            "drive_length":  r[2],
+            "drive_time":    r[3],
+            "recovery":      r[4],
+            "peak_force_n":  r[5],
+            "avg_force_n":   r[6],
+            "watts":         r[7],
+            "peak_avg_ratio": r[8],
+            "hr_bpm":        r[9],
+            "logged_at":     r[10],
+        }
+        for r in rows
+    ]
 
 
 # ── History ───────────────────────────────────────────────────────────────────
