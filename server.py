@@ -131,6 +131,9 @@ def api_state():
     elapsed = int(s.get("elapsed", 0))
     s["elapsed_str"] = f"{elapsed // 60}:{elapsed % 60:02d}"
     s["distance_str"] = f"{s.get('distance', 0):.0f}"
+    # pace_sec: numeric seconds per 500m (used by client for target-pace coloring)
+    speed = s.get("speed_mm_s", 0)
+    s["pace_sec"] = round(500_000 / speed) if speed > 0 else None
     # Pace colour vs target
     target = s.get("target_pace_sec")
     speed  = s.get("speed_mm_s", 0)
@@ -470,9 +473,10 @@ def api_ble_connect(body: BleConnectBody):
 @app.get("/api/profile")
 def api_profile():
     return {
-        "name":       state.get("user_name", ""),
-        "weight_kg":  state.get("user_weight_kg"),
-        "height_cm":  state.get("user_height_cm"),
+        "name":        state.get("user_name", ""),
+        "weight_kg":   state.get("user_weight_kg"),
+        "height_cm":   state.get("user_height_cm"),
+        "dob":         state.get("user_dob"),
         "has_profile": has_user_profile(),
     }
 

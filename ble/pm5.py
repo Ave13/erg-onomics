@@ -211,15 +211,16 @@ def load_user_profile():
     try:
         with sqlite3.connect(_DB_PATH) as conn:
             row = conn.execute(
-                "SELECT id, name, weight_kg, height_cm "
+                "SELECT id, name, weight_kg, height_cm, dob "
                 "FROM user_profile ORDER BY id DESC LIMIT 1"
             ).fetchone()
         if row:
-            uid, name, weight_kg, height_cm = row
+            uid, name, weight_kg, height_cm, dob = row
             state["user_id"]         = uid
             state["user_name"]       = name or ""
             state["user_weight_kg"]  = weight_kg
             state["user_height_cm"]  = height_cm
+            state["user_dob"]        = dob  # ISO date string or None
             state["expected_drive_cm"] = round(height_cm * 0.50)
             state["expected_peak_n"]   = round(weight_kg * 4.5)
     except Exception:

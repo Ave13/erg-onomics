@@ -420,6 +420,8 @@ const _flip = {};
 // BLE
 let _bleDevices = [];
 let _bleAddress = localStorage.getItem('bleAddress') || null;
+let _bleConnecting = false;   // prevents repeated selectErg() calls each tick
+let _userDob = null;          // ISO date string from profile, for HR zone calc
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function nav(page) {
@@ -431,6 +433,7 @@ function nav(page) {
   if (page === 'history')  loadHistory();
   if (page === 'workouts') { loadWorkouts(); renderIntervalForm(); }
   if (page === 'plan')     loadPlan();
+  if (page === 'profile')  loadWifi();
   if (page === 'profile')  loadProfile();
 }
 
@@ -477,11 +480,46 @@ function renderScreen() {
     return;
   }
 
+  if (_screen === 4) {
+    // Intervals: rebuild on arrival, then update in-place to keep bar transition alive
+    if (changed) { w.innerHTML = renderIntervals(); bindFlipCards(); }
+    else _updateIntervalsInPlace();
+    return;
+  }
+
   if (_screen === 0) w.innerHTML = renderPower();
   else if (_screen === 1) w.innerHTML = renderEndurance();
   else if (_screen === 2) w.innerHTML = renderTechnique();
-  else if (_screen === 4) w.innerHTML = renderIntervals();
   bindFlipCards();
+}
+
+function _updateIntervalsInPlace() {
+  const total = _s.interval_total ?? 0;
+  if (!total) return;
+  const idx   = (_s.interval_index ?? 0) + 1;
+  const phase = _s.interval_phase ?? 'work';
+  const rem   = _s.interval_remaining;
+  const phaseColor = phase==='work' ? 'var(--green)' : phase==='rest' ? 'var(--orange)' : 'var(--label)';
+  const phaseLabel = phase==='work' ? 'WORK' : phase==='rest' ? 'REST' : 'DONE';
+  const pct = rem != null && rem > 0
+    ? Math.max(0, Math.min(100, 100 - (rem / estimateTotal(phase)) * 100))
+    : (phase === 'done' ? 100 : 0);
+  const remStr = rem != null ? (phase==='done' ? 'Done' : formatRem(rem, phase)) : '--';
+
+  const elIdx   = document.getElementById('iv-idx');
+  const elOf    = document.getElementById('iv-of');
+  const elPhase = document.getElementById('iv-phase');
+  const elBar   = document.getElementById('iv-bar');
+  const elRem   = document.getElementById('iv-rem');
+  const elPace  = document.querySelector('[data-flip="iv-pace"] .val');
+  const elDist  = document.querySelector('[data-flip="iv-dist"] .val');
+  if (elIdx)   elIdx.textContent = idx;
+  if (elOf)    elOf.textContent  = 'of ' + total;
+  if (elPhase) { elPhase.textContent = phaseLabel; elPhase.style.color = phaseColor; }
+  if (elBar)   { elBar.style.width = pct + '%'; elBar.style.background = phaseColor; }
+  if (elRem)   elRem.textContent = remStr;
+  if (elPace)  elPace.textContent = _s.pace ?? '--';
+  if (elDist)  elDist.textContent = _s.distance_str ?? '--';
 }
 
 // ── Tap-to-flip helper ────────────────────────────────────────────────────────
@@ -554,7 +592,7 @@ function renderPower() {
 // ── Screen 1: Endurance ───────────────────────────────────────────────────────
 function renderEndurance() {
   const hr = _s.hr_bpm;
-  const maxHr = TANAKA_MAX_HR(_s._dob);
+  const maxHr = TANAKA_MAX_HR(_userDob);
   let zone = -1, zoneColor = '';
   if (hr && maxHr) {
     const f = hr / maxHr;
@@ -756,15 +794,15 @@ function renderIntervals() {
 
   return `<div class="grid8">
     <div class="mc g4" style="gap:4px">
-      <div style="font-size:clamp(48px,13vw,80px);font-weight:700;line-height:1">${idx}</div>
-      <div class="lbl">of ${total}</div>
-      <div style="font-size:16px;font-weight:700;color:${phaseColor}">${phaseLabel}</div>
+      <div id="iv-idx" style="font-size:clamp(48px,13vw,80px);font-weight:700;line-height:1">${idx}</div>
+      <div id="iv-of" class="lbl">of ${total}</div>
+      <div id="iv-phase" style="font-size:16px;font-weight:700;color:${phaseColor}">${phaseLabel}</div>
     </div>
     <div class="mc g2h" style="padding:10px 12px;gap:8px;align-items:stretch">
       <div style="height:14px;border-radius:7px;background:#2a2b3a;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:${phaseColor};border-radius:7px;transition:width .5s"></div>
+        <div id="iv-bar" style="height:100%;width:${pct}%;background:${phaseColor};border-radius:7px;transition:width .5s"></div>
       </div>
-      <div style="font-size:clamp(28px,8vw,42px);font-weight:700;text-align:center">${remStr}</div>
+      <div id="iv-rem" style="font-size:clamp(28px,8vw,42px);font-weight:700;text-align:center">${remStr}</div>
     </div>
     ${mc('iv-pace', alts_pace())}
     ${mc('iv-dist', alts_dist())}
@@ -805,10 +843,13 @@ function updateBlePill(status, name, devices) {
   }
   if (cardTxt) { cardTxt.textContent = label; }
 
-  if (status === 'found') {
+  // Reset guard when connection resolves
+  if (status === 'connected' || status === 'disconnected') _bleConnecting = false;
+
+  if (status === 'found' && !_bleConnecting) {
     if (_bleAddress) {
       const match = _bleDevices.find(d => d.address === _bleAddress);
-      if (match) { selectErg(match.address, match.name); return; }
+      if (match) { _bleConnecting = true; selectErg(match.address, match.name); return; }
     }
     openErgPicker();
   }
@@ -1161,6 +1202,7 @@ async function loadProfile() {
   if(p.height_cm){ const ti=p.height_cm/2.54;
     document.getElementById('p-ft').value=Math.floor(ti/12);
     document.getElementById('p-in').value=Math.round(ti%12); }
+  if(p.dob) { document.getElementById('p-dob').value=p.dob; _userDob=p.dob; }
 }
 async function saveProfile() {
   const name=document.getElementById('p-name').value.trim();
