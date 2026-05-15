@@ -645,9 +645,8 @@ function renderScreen() {
     return;
   }
 
-  // Screens 0-2: rebuild each tick (no stateful elements)
-  if (!changed) return;
-  if (_screen === 0) w.innerHTML = renderPower();
+  // Screens 0-2: rebuild every tick (no stateful elements)
+  if (_screen === 0)      w.innerHTML = renderPower();
   else if (_screen === 1) w.innerHTML = renderEndurance();
   else if (_screen === 2) w.innerHTML = renderTechnique();
   bindFlipCards();

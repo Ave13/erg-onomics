@@ -143,7 +143,7 @@ if (_screen === N) {
 }
 ```
 
-Screens 0–2 rebuild innerHTML only when `_screen !== _lastScreen` (i.e., on swipe arrival).
+Screens 0–2 rebuild innerHTML on **every** `tick()` call (every 500 ms) so metric values stay live. Screens 3–5 are stable DOM — only rebuilt on swipe arrival.
 
 ### Flip cards
 
