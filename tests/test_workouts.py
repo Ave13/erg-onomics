@@ -108,3 +108,36 @@ class TestWorkoutCRUD:
     def test_get_nonexistent_workout_returns_none(self, tmp_db, monkeypatch):
         monkeypatch.setattr(workouts_mod, "_DB_PATH", tmp_db)
         assert workouts_mod.get_workout(99999) is None
+
+
+# ── _interval_label with coaching targets ────────────────────────────────────
+
+class TestIntervalLabelTargets:
+    def test_spm_target(self):
+        iv = {"type": "distance", "meters": 500, "rest_secs": 0, "target_spm": 22}
+        assert "22 spm" in _interval_label(iv)
+
+    def test_hr_zone_target(self):
+        iv = {"type": "time", "seconds": 300, "rest_secs": 0, "target_hr_zone": 3}
+        assert "Z3" in _interval_label(iv)
+
+    def test_watts_target(self):
+        iv = {"type": "distance", "meters": 1000, "rest_secs": 120, "target_watts": 250}
+        assert "250W" in _interval_label(iv)
+
+    def test_all_targets(self):
+        iv = {"type": "distance", "meters": 500, "rest_secs": 60,
+              "target_spm": 20, "target_hr_zone": 4, "target_watts": 300}
+        label = _interval_label(iv)
+        assert "20 spm" in label
+        assert "Z4" in label
+        assert "300W" in label
+
+    def test_null_targets_unchanged(self):
+        iv = {"type": "distance", "meters": 500, "rest_secs": 0,
+              "target_spm": None, "target_hr_zone": None, "target_watts": None}
+        assert _interval_label(iv) == "500m"
+
+    def test_missing_target_keys_unchanged(self):
+        iv = {"type": "distance", "meters": 500, "rest_secs": 0}
+        assert _interval_label(iv) == "500m"

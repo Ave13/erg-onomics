@@ -118,4 +118,10 @@ def _interval_label(iv):
         txt += "  +athlete rest"
     elif rest:
         txt += f"  +{rest // 60}:{rest % 60:02d} rest"
+    targets = []
+    if iv.get("target_spm"):     targets.append(f"{iv['target_spm']} spm")
+    if iv.get("target_hr_zone"): targets.append(f"Z{iv['target_hr_zone']}")
+    if iv.get("target_watts"):   targets.append(f"{iv['target_watts']}W")
+    if targets:
+        txt += "  @" + " · ".join(targets)
     return txt

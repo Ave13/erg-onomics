@@ -178,13 +178,27 @@ def api_state():
         s["pace_color"] = "green" if current <= target * 1.02 else "red"
     else:
         s["pace_color"] = ""
-    # Total intervals count for display
+    # Total intervals count + current interval coaching targets
     wid = state.get("active_workout_id")
     if wid:
         w = get_workout(wid)
-        s["interval_total"] = len(w[2].get("intervals", [])) if w else 0
+        if w:
+            intervals = w[2].get("intervals", [])
+            s["interval_total"] = len(intervals)
+            idx = state.get("interval_index", 0)
+            if 0 <= idx < len(intervals):
+                iv = intervals[idx]
+                s["interval_target_spm"]     = iv.get("target_spm")
+                s["interval_target_hr_zone"] = iv.get("target_hr_zone")
+                s["interval_target_watts"]   = iv.get("target_watts")
+            else:
+                s["interval_target_spm"] = s["interval_target_hr_zone"] = s["interval_target_watts"] = None
+        else:
+            s["interval_total"] = 0
+            s["interval_target_spm"] = s["interval_target_hr_zone"] = s["interval_target_watts"] = None
     else:
         s["interval_total"] = 0
+        s["interval_target_spm"] = s["interval_target_hr_zone"] = s["interval_target_watts"] = None
     return JSONResponse(s)
 
 

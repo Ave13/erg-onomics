@@ -295,6 +295,24 @@ button.sm.sel { background:var(--blue); color:#fff; }
 button.sm:active { opacity:.75; }
 #wk-err { color:var(--red); font-size:13px; margin:6px 0; min-height:18px; }
 #p-msg  { text-align:center; font-size:13px; min-height:18px; }
+
+/* ── Interval list rows ── */
+.iv-row { display:flex; align-items:center; gap:8px; background:var(--card);
+          border-radius:10px; padding:10px 13px; margin-bottom:7px;
+          border-top:1px solid rgba(255,255,255,.04);
+          box-shadow:0 2px 8px rgba(0,0,0,.4); }
+.iv-row-main { flex:1; min-width:0; cursor:pointer; }
+.iv-row-goal { font-size:14px; font-weight:600; }
+.iv-row-targets { font-size:11px; color:var(--label); margin-top:2px; }
+.iv-row-ctrls { display:flex; gap:4px; flex-shrink:0; }
+
+/* ── Interval editor bottom sheet ── */
+#iv-edit-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75);
+                   z-index:110; align-items:flex-end; justify-content:center; }
+#iv-edit-overlay.open { display:flex; }
+#iv-edit-sheet { background:var(--card); border-radius:16px 16px 0 0;
+                 padding:18px 16px max(20px,env(safe-area-inset-bottom));
+                 width:100%; max-width:480px; overflow-y:auto; max-height:80vh; }
 </style>
 </head>
 <body>
@@ -379,35 +397,16 @@ button.sm:active { opacity:.75; }
 <div id="page-workouts" class="page">
   <h3>Library</h3>
   <div id="wk-list"></div>
-  <h3>New Custom Workout</h3>
-  <div class="form-row"><label>Name</label><input id="wk-name" type="text" value="My Workout"></div>
-  <div class="form-row"><label>Type</label>
-    <select id="wk-type" onchange="renderIntervalForm()">
-      <option value="distance">Distance</option>
-      <option value="time">Time</option>
-      <option value="calorie">Calorie</option>
-    </select>
+  <h3 style="margin-top:16px">New Workout</h3>
+  <div class="form-row"><label>Name</label>
+    <input id="wk-name" type="text" value="My Workout" autocomplete="off">
   </div>
-  <div id="interval-form"></div>
-  <div class="form-row"><label>Rest</label>
-    <select id="wk-rest">
-      <option value="0">No rest</option>
-      <option value="30">0:30</option>
-      <option value="60">1:00</option>
-      <option value="90">1:30</option>
-      <option value="120" selected>2:00</option>
-      <option value="180">3:00</option>
-      <option value="240">4:00</option>
-      <option value="300">5:00</option>
-      <option value="600">10:00</option>
-      <option value="-1">Athlete decides</option>
-    </select>
-  </div>
-  <div class="form-row"><label>Reps</label>
-    <input id="wk-reps" type="number" value="1" min="1" max="50">
-  </div>
+  <div id="wk-interval-list"></div>
+  <button class="btn btn-neutral" style="height:44px;font-size:14px;margin-bottom:10px"
+          onclick="wkAddInterval()">+ Add Interval</button>
   <div id="wk-err"></div>
-  <button class="btn btn-neutral" style="height:52px;font-size:16px" onclick="saveWorkout()">Save Workout</button>
+  <button class="btn btn-start" style="height:52px;font-size:16px"
+          onclick="saveWorkout()">Save Workout</button>
 </div>
 
 <!-- ══ PLAN PAGE ════════════════════════════════════════════════════════════ -->
@@ -481,6 +480,56 @@ button.sm:active { opacity:.75; }
   </div>
 </div>
 
+<!-- ══ INTERVAL EDITOR SHEET ════════════════════════════════════════════════ -->
+<div id="iv-edit-overlay" onclick="wkEditorClose(event)">
+  <div id="iv-edit-sheet">
+    <h3 id="iv-edit-title" style="margin-bottom:14px">New Interval</h3>
+    <div class="form-row"><label>Type</label>
+      <select id="ive-type" onchange="wkEditorTypeChange()">
+        <option value="distance">Distance</option>
+        <option value="time">Time</option>
+        <option value="calorie">Calorie</option>
+      </select>
+    </div>
+    <div id="ive-goal-wrap"></div>
+    <div class="form-row"><label>Rest</label>
+      <select id="ive-rest">
+        <option value="0">No rest</option>
+        <option value="30">0:30</option>
+        <option value="60">1:00</option>
+        <option value="90">1:30</option>
+        <option value="120">2:00</option>
+        <option value="180">3:00</option>
+        <option value="240">4:00</option>
+        <option value="300">5:00</option>
+        <option value="600">10:00</option>
+        <option value="-1">Athlete decides</option>
+      </select>
+    </div>
+    <div class="form-row"><label>Target SPM (optional)</label>
+      <input id="ive-spm" type="number" min="14" max="40" placeholder="e.g. 22">
+    </div>
+    <div class="form-row"><label>Target Watts (optional)</label>
+      <input id="ive-watts" type="number" min="50" max="500" placeholder="e.g. 180">
+    </div>
+    <div class="form-row"><label>Target HR Zone (optional)</label>
+      <select id="ive-hrzone">
+        <option value="">None</option>
+        <option value="1">Z1 — Easy</option>
+        <option value="2">Z2 — Aerobic</option>
+        <option value="3">Z3 — Tempo</option>
+        <option value="4">Z4 — Threshold</option>
+        <option value="5">Z5 — Max</option>
+      </select>
+    </div>
+    <div id="ive-err" style="color:var(--red);font-size:13px;min-height:18px;margin-bottom:8px"></div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-neutral" style="height:46px" onclick="wkEditorClose()">Cancel</button>
+      <button class="btn btn-start"   style="height:46px" onclick="wkEditorSave()">Done</button>
+    </div>
+  </div>
+</div>
+
 </div><!-- #shell -->
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
@@ -521,6 +570,9 @@ let _lastPoseLandmarks = null;
 let _angleCache = {catch:'--', layback:'--', ratio:'--'};
 let _lastStrokeStateForAngle = -1;
 let _initCameraRunning = false;
+// Workout builder
+let _wkIntervals = [];   // working list of interval objects
+let _wkEditIdx   = -1;   // index being edited (-1 = new interval)
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function nav(page) {
@@ -530,7 +582,7 @@ function nav(page) {
   const idx = ['row','history','workouts','plan','profile'].indexOf(page);
   document.querySelectorAll('#nav button')[idx].classList.add('active');
   if (page === 'history')  loadHistory();
-  if (page === 'workouts') { loadWorkouts(); renderIntervalForm(); }
+  if (page === 'workouts') { loadWorkouts(); wkRenderList(); }
   if (page === 'plan')     loadPlan();
   if (page === 'profile')  { loadProfile(); loadWifi(); }
 }
@@ -855,6 +907,16 @@ function drawForce() {
 }
 
 // ── Screen 4: Intervals ───────────────────────────────────────────────────────
+function _ivTargetHtml() {
+  const parts = [];
+  if (_s.interval_target_spm)     parts.push(`${_s.interval_target_spm} spm`);
+  if (_s.interval_target_hr_zone) parts.push(`Z${_s.interval_target_hr_zone}`);
+  if (_s.interval_target_watts)   parts.push(`${_s.interval_target_watts}W`);
+  return parts.length
+    ? `<div id="iv-target" style="font-size:13px;color:var(--label);margin-top:4px">${parts.join(' · ')}</div>`
+    : `<div id="iv-target"></div>`;
+}
+
 function renderIntervals() {
   const idx      = (_s.interval_index ?? 0) + 1;
   const total    = _s.interval_total  ?? 0;
@@ -883,6 +945,7 @@ function renderIntervals() {
       <div id="iv-num">${idx}</div>
       <div id="iv-of">of ${total} intervals</div>
       <div id="iv-phase" class="${phase}">${phaseLabel}</div>
+      ${_ivTargetHtml()}
     </div>
     <div id="iv-progress-wrap">
       <div id="iv-progress-bg">
@@ -912,6 +975,12 @@ function _updateIntervalsInPlace() {
   const b = document.getElementById('iv-progress-bar');
   if (b) { b.style.width = `${pct}%`; b.style.background = barColor; }
   const r = document.getElementById('iv-remaining'); if (r) r.textContent = remStr;
+  const t = document.getElementById('iv-target');
+  if (t) t.textContent = [
+    _s.interval_target_spm      ? `${_s.interval_target_spm} spm` : '',
+    _s.interval_target_hr_zone  ? `Z${_s.interval_target_hr_zone}` : '',
+    _s.interval_target_watts    ? `${_s.interval_target_watts}W` : '',
+  ].filter(Boolean).join(' · ');
 }
 
 function formatRem(sec, phase) {
@@ -1224,63 +1293,180 @@ async function loadHistory() {
 
 // ── Workouts ──────────────────────────────────────────────────────────────────
 async function loadWorkouts() {
-  const ws=await fetch('/api/workouts').then(r=>r.json());
-  document.getElementById('wk-list').innerHTML=ws.map(w=>
+  const ws = await fetch('/api/workouts').then(r => r.json());
+  _wkIntervals = [];
+  document.getElementById('wk-list').innerHTML = ws.map(w =>
     `<div class="wk-row">
-      <div><div class="name">${w.name}${w.is_preset?'':' <span style="font-size:11px;color:var(--label)">[custom]</span>'}</div>
+      <div><div class="name">${w.name}${w.is_preset ? '' : ' <span style="font-size:11px;color:var(--label)">[custom]</span>'}</div>
            <div class="sub">${w.summary}</div></div>
-      <button class="sm sel" onclick="selectWorkout(${w.id},'${w.name.replace(/'/g,"\\'")}')">Use</button>
+      <div style="display:flex;gap:6px">
+        <button class="sm sel" onclick="selectWorkout(${w.id},'${w.name.replace(/'/g,"\\'")}')">Use</button>
+        ${!w.is_preset ? `<button class="sm" style="color:var(--red)" onclick="deleteWorkout(${w.id})">Del</button>` : ''}
+      </div>
     </div>`
   ).join('');
+  wkRenderList();
 }
-async function selectWorkout(id,name) {
-  await fetch('/api/workouts/select',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({workout_id:id,workout_name:name})});
+async function selectWorkout(id, name) {
+  await fetch('/api/workouts/select', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({workout_id:id, workout_name:name})});
   nav('row');
 }
-function renderIntervalForm() {
-  const type=document.getElementById('wk-type')?.value;
-  if (!type) return;
-  const forms = {
-    distance: `<div class="form-row"><label>Distance (m)</label><select id="wk-dist">
-      ${[100,200,250,300,400,500,750,1000,1500,2000,2500,3000,5000,10000]
-        .map(v=>`<option${v===500?' selected':''}>${v}</option>`).join('')}
-      </select></div>`,
-    time: `<div class="form-row"><label>Duration</label><select id="wk-time">
-      ${[[30,'0:30'],[60,'1:00'],[90,'1:30'],[120,'2:00'],[150,'2:30'],[180,'3:00'],
-         [240,'4:00'],[300,'5:00'],[480,'8:00'],[600,'10:00'],[900,'15:00'],
-         [1200,'20:00'],[1800,'30:00'],[3600,'60:00']]
-        .map(([v,l])=>`<option value="${v}"${v===300?' selected':''}>${l}</option>`).join('')}
-      </select></div>`,
-    calorie: `<div class="form-row"><label>Calories (kcal)</label>
-      <input id="wk-cal" type="number" value="50" min="1" max="9999"></div>`,
-  };
-  document.getElementById('interval-form').innerHTML=forms[type]||'';
+async function deleteWorkout(id) {
+  await fetch(`/api/workouts/${id}`, {method:'DELETE'});
+  await loadWorkouts();
 }
-async function saveWorkout() {
-  const name  = document.getElementById('wk-name').value.trim()||'My Workout';
-  const type  = document.getElementById('wk-type').value;
-  const rest  = parseInt(document.getElementById('wk-rest').value);
-  const reps  = parseInt(document.getElementById('wk-reps').value)||1;
-  const errEl = document.getElementById('wk-err');
-  errEl.textContent='';
-  let iv;
-  if (type==='distance') {
-    const m=parseInt(document.getElementById('wk-dist').value);
-    if (m<100) { errEl.textContent='Minimum distance is 100m'; return; }
-    iv={type:'distance',meters:m,rest_secs:rest};
-  } else if (type==='time') {
-    const s=parseInt(document.getElementById('wk-time').value);
-    if (s<20) { errEl.textContent='Minimum duration is 20 seconds'; return; }
-    iv={type:'time',seconds:s,rest_secs:rest};
-  } else {
-    const c=parseInt(document.getElementById('wk-cal').value);
-    if (c<1) { errEl.textContent='Minimum is 1 calorie'; return; }
-    iv={type:'calorie',calories:c,rest_secs:rest};
+
+// ── Workout builder ───────────────────────────────────────────────────────────
+function _defaultInterval() {
+  return {type:'distance', meters:500, rest_secs:120,
+          target_spm:null, target_watts:null, target_hr_zone:null};
+}
+
+function _ivLabel(iv) {
+  let goal;
+  if (iv.type === 'distance') goal = `${iv.meters}m`;
+  else if (iv.type === 'calorie') goal = `${iv.calories} kcal`;
+  else { const s = iv.seconds || 0; goal = `${Math.floor(s/60)}:${String(s%60).padStart(2,'0')}`; }
+  const rest = iv.rest_secs;
+  if (rest === -1) goal += '  +athlete rest';
+  else if (rest > 0) { const m = Math.floor(rest/60), s = rest%60; goal += `  +${m}:${String(s).padStart(2,'0')} rest`; }
+  return goal;
+}
+
+function _ivTargetsLabel(iv) {
+  const parts = [];
+  if (iv.target_spm)     parts.push(`${iv.target_spm} spm`);
+  if (iv.target_hr_zone) parts.push(`Z${iv.target_hr_zone}`);
+  if (iv.target_watts)   parts.push(`${iv.target_watts}W`);
+  return parts.join('  ·  ');
+}
+
+function wkRenderList() {
+  const el = document.getElementById('wk-interval-list');
+  if (!el) return;
+  if (!_wkIntervals.length) {
+    el.innerHTML = '<p style="color:var(--label);font-size:13px;text-align:center;padding:12px 0">No intervals yet. Tap + Add Interval.</p>';
+    return;
   }
-  const intervals=Array.from({length:Math.min(reps,50)},()=>({...iv}));
-  await fetch('/api/workouts',{method:'POST',headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({name,intervals})});
+  el.innerHTML = _wkIntervals.map((iv, i) => {
+    const targets = _ivTargetsLabel(iv);
+    return `<div class="iv-row">
+      <div class="iv-row-main" onclick="wkEditInterval(${i})">
+        <div class="iv-row-goal">${i+1}. ${_ivLabel(iv)}</div>
+        ${targets ? `<div class="iv-row-targets">${targets}</div>` : ''}
+      </div>
+      <div class="iv-row-ctrls">
+        ${i > 0 ? `<button class="sm" onclick="wkMoveUp(${i})">↑</button>` : ''}
+        ${i < _wkIntervals.length-1 ? `<button class="sm" onclick="wkMoveDown(${i})">↓</button>` : ''}
+        <button class="sm" onclick="wkCopyInterval(${i})">⧉</button>
+        <button class="sm" style="color:var(--red)" onclick="wkDeleteInterval(${i})">✕</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function wkAddInterval() { _wkEditIdx = -1; wkEditorOpen(_defaultInterval()); }
+function wkEditInterval(i) { _wkEditIdx = i; wkEditorOpen(_wkIntervals[i]); }
+
+function wkCopyInterval(i) {
+  _wkIntervals.splice(i+1, 0, {..._wkIntervals[i]});
+  wkRenderList();
+}
+function wkMoveUp(i) {
+  if (i < 1) return;
+  [_wkIntervals[i-1], _wkIntervals[i]] = [_wkIntervals[i], _wkIntervals[i-1]];
+  wkRenderList();
+}
+function wkMoveDown(i) {
+  if (i >= _wkIntervals.length - 1) return;
+  [_wkIntervals[i], _wkIntervals[i+1]] = [_wkIntervals[i+1], _wkIntervals[i]];
+  wkRenderList();
+}
+function wkDeleteInterval(i) { _wkIntervals.splice(i, 1); wkRenderList(); }
+
+function wkEditorOpen(iv) {
+  document.getElementById('iv-edit-title').textContent =
+    _wkEditIdx === -1 ? 'New Interval' : `Edit Interval ${_wkEditIdx+1}`;
+  document.getElementById('ive-type').value = iv.type || 'distance';
+  wkEditorTypeChange(iv);
+  const restEl = document.getElementById('ive-rest');
+  restEl.value = String(iv.rest_secs != null ? iv.rest_secs : 120);
+  if (!restEl.value || !restEl.querySelector(`option[value="${restEl.value}"]`)) restEl.value = '120';
+  document.getElementById('ive-spm').value    = iv.target_spm   || '';
+  document.getElementById('ive-watts').value  = iv.target_watts || '';
+  document.getElementById('ive-hrzone').value = iv.target_hr_zone ? String(iv.target_hr_zone) : '';
+  document.getElementById('ive-err').textContent = '';
+  document.getElementById('iv-edit-overlay').classList.add('open');
+}
+
+function wkEditorTypeChange(iv) {
+  const type = document.getElementById('ive-type').value;
+  const wrap = document.getElementById('ive-goal-wrap');
+  const src  = (iv && typeof iv === 'object' && !iv.type) ? null : iv;
+  if (type === 'distance') {
+    const sel = src?.meters || 500;
+    const opts = [100,200,250,300,400,500,750,1000,1500,2000,2500,3000,5000,10000]
+      .map(v => `<option value="${v}"${v===sel?' selected':''}>${v}m</option>`).join('');
+    wrap.innerHTML = `<div class="form-row"><label>Distance</label><select id="ive-dist">${opts}</select></div>`;
+  } else if (type === 'time') {
+    const sel = src?.seconds || 300;
+    const opts = [[30,'0:30'],[60,'1:00'],[90,'1:30'],[120,'2:00'],[150,'2:30'],[180,'3:00'],
+                  [240,'4:00'],[300,'5:00'],[480,'8:00'],[600,'10:00'],[900,'15:00'],
+                  [1200,'20:00'],[1800,'30:00'],[3600,'60:00']]
+      .map(([v,l]) => `<option value="${v}"${v===sel?' selected':''}>${l}</option>`).join('');
+    wrap.innerHTML = `<div class="form-row"><label>Duration</label><select id="ive-time">${opts}</select></div>`;
+  } else {
+    wrap.innerHTML = `<div class="form-row"><label>Calories (kcal)</label>
+      <input id="ive-cal" type="number" value="${src?.calories||50}" min="1" max="9999"></div>`;
+  }
+}
+
+function wkEditorSave() {
+  const type  = document.getElementById('ive-type').value;
+  const rest  = parseInt(document.getElementById('ive-rest').value);
+  const spm   = parseInt(document.getElementById('ive-spm').value)   || null;
+  const watts = parseInt(document.getElementById('ive-watts').value) || null;
+  const hz    = parseInt(document.getElementById('ive-hrzone').value) || null;
+  const errEl = document.getElementById('ive-err');
+  let iv;
+  if (type === 'distance') {
+    const m = parseInt(document.getElementById('ive-dist').value);
+    if (!m || m < 50) { errEl.textContent = 'Minimum 50m'; return; }
+    iv = {type:'distance', meters:m, rest_secs:rest};
+  } else if (type === 'time') {
+    const s = parseInt(document.getElementById('ive-time').value);
+    if (!s || s < 10) { errEl.textContent = 'Minimum 10 seconds'; return; }
+    iv = {type:'time', seconds:s, rest_secs:rest};
+  } else {
+    const c = parseInt(document.getElementById('ive-cal').value);
+    if (!c || c < 1) { errEl.textContent = 'Minimum 1 calorie'; return; }
+    iv = {type:'calorie', calories:c, rest_secs:rest};
+  }
+  iv.target_spm     = spm;
+  iv.target_watts   = watts;
+  iv.target_hr_zone = hz;
+  if (_wkEditIdx === -1) _wkIntervals.push(iv);
+  else _wkIntervals[_wkEditIdx] = iv;
+  document.getElementById('iv-edit-overlay').classList.remove('open');
+  wkRenderList();
+}
+
+function wkEditorClose(e) {
+  if (e && e.target !== document.getElementById('iv-edit-overlay')) return;
+  document.getElementById('iv-edit-overlay').classList.remove('open');
+}
+
+async function saveWorkout() {
+  const name  = document.getElementById('wk-name').value.trim() || 'My Workout';
+  const errEl = document.getElementById('wk-err');
+  errEl.textContent = '';
+  if (!_wkIntervals.length) { errEl.textContent = 'Add at least one interval'; return; }
+  await fetch('/api/workouts', {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({name, intervals: _wkIntervals})});
+  _wkIntervals = [];
+  document.getElementById('wk-name').value = 'My Workout';
+  wkRenderList();
   await loadWorkouts();
 }
 
