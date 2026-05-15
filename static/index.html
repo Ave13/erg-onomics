@@ -24,7 +24,8 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 
 /* ── Page shell ── */
 #shell { display:flex; flex-direction:column; height:100vh; height:100dvh; }
-.page { display:none; flex:1; overflow-y:auto; padding:10px; min-height:0; }
+.page { display:none; flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:10px; min-height:0; }
+.page.active { display:block; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 
 /* ── Row page: CSS grid so screen-wrap always gets leftover space ── */
 #page-row.active {
@@ -136,18 +137,11 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 #target-bar.hidden { display:none !important; }
 
 /* ── Session menu ── */
-#session-bar { display:flex; align-items:center; justify-content:space-between;
-               padding:6px 0 max(8px,env(safe-area-inset-bottom)); flex-shrink:0; gap:6px; }
-#session-menu-btn { background:var(--card); border:none; border-radius:50%;
-                    width:46px; height:46px; font-size:22px; cursor:pointer;
-                    color:var(--value); flex-shrink:0;
-                    box-shadow:0 2px 8px rgba(0,0,0,.4); }
+#session-bar { padding:6px 0 max(8px,env(safe-area-inset-bottom)); flex-shrink:0; }
+#session-menu-btn { width:100%; height:44px; background:var(--card); border:none;
+                    border-radius:12px; font-size:14px; font-weight:600; cursor:pointer;
+                    color:var(--label); box-shadow:0 2px 8px rgba(0,0,0,.4); }
 #session-menu-btn:active { opacity:.7; }
-#session-quick { display:flex; gap:6px; flex:1; }
-#session-quick button { flex:1; height:46px; border:none; border-radius:10px;
-                         font-size:15px; font-weight:700; cursor:pointer; }
-#session-quick button:active { opacity:.75; }
-#session-quick button:disabled { opacity:.3; cursor:default; }
 /* Slide-up session panel */
 #session-panel { display:none; position:fixed; bottom:0; left:0; right:0; z-index:200;
                  background:var(--card); border-radius:18px 18px 0 0;
@@ -330,18 +324,19 @@ button.sm:active { opacity:.75; }
   <div id="screen-wrap"><!-- rendered by renderScreen() --></div>
 
   <div id="session-bar">
-    <button id="session-menu-btn" onclick="toggleSessionPanel()">⊙</button>
-    <div id="session-quick">
-      <button id="btn-start" class="btn-start" onclick="doStart()">Start</button>
-      <button id="btn-pause" class="btn-pause" onclick="doPause()" disabled>Pause</button>
-      <button id="btn-end"   class="btn-end"   onclick="doEnd()"   disabled>End</button>
-    </div>
+    <button id="session-menu-btn" onclick="toggleSessionPanel()">
+      <span id="session-bar-label">Ready</span>
+    </button>
   </div>
 </div>
 
 <!-- ══ SESSION PANEL ════════════════════════════════════════════════════════ -->
 <div id="session-panel">
-  <h4>Session</h4>
+  <div class="btn-row" style="margin-bottom:8px">
+    <button class="btn btn-start"  id="btn-start" onclick="doStart();closeSessionPanel()">Start</button>
+    <button class="btn btn-pause"  id="btn-pause" onclick="doPause();closeSessionPanel()" disabled>Pause</button>
+    <button class="btn btn-end"    id="btn-end"   onclick="doEnd();closeSessionPanel()"   disabled>End</button>
+  </div>
   <div class="btn-row">
     <button class="btn btn-neutral" onclick="openTargetModal();closeSessionPanel()">Target Pace</button>
     <button class="btn btn-neutral" onclick="nav('workouts');closeSessionPanel()">Workout</button>
@@ -412,9 +407,9 @@ button.sm:active { opacity:.75; }
 
 <!-- ══ PROFILE PAGE ═════════════════════════════════════════════════════════ -->
 <div id="page-profile" class="page">
-  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
     <h3 style="margin:0">Profile</h3>
-    <span style="font-size:11px;color:var(--label)">v1.0.0</span>
+    <span id="version-badge" style="font-size:12px;color:var(--value);background:var(--card);padding:3px 10px;border-radius:20px">v…</span>
   </div>
   <div class="form-row"><label>Name</label><input id="p-name" type="text" placeholder="Your name"></div>
   <div class="form-row"><label>Weight (kg)</label><input id="p-weight" type="number" step="0.5" min="30" max="200"></div>
@@ -999,6 +994,12 @@ async function tick() {
     _active = _s.session_active;
     _paused = _s.session_paused;
 
+    // Hide header row during active session to give metrics more space
+    const hdr = document.getElementById('row-header');
+    const slbl = document.getElementById('screen-label');
+    if (hdr)  hdr.style.display  = _active ? 'none' : '';
+    if (slbl) slbl.style.display = _active ? 'none' : '';
+
     // Status bar
     const st = document.getElementById('status');
     if (st) {
@@ -1007,13 +1008,15 @@ async function tick() {
       else              st.textContent = _s.user_name || 'Ready';
     }
 
-    // Buttons
+    // Session bar label + panel buttons
+    const lbl = document.getElementById('session-bar-label');
+    if (lbl) lbl.textContent = _paused ? '⏸ Paused — tap to control' : _active ? '⬤ Recording — tap to control' : 'Tap to start session';
     const bs = document.getElementById('btn-start');
     const bp = document.getElementById('btn-pause');
     const be = document.getElementById('btn-end');
-    if (bs) bs.disabled = _active;
-    if (bp) { bp.disabled = !_active; bp.textContent = _paused ? 'Resume' : 'Pause'; }
-    if (be) be.disabled = !_active;
+    if (bs) bs.style.display = _active ? 'none' : '';
+    if (bp) { bp.style.display = _active ? '' : 'none'; bp.textContent = _paused ? 'Resume' : 'Pause'; }
+    if (be) be.style.display = _active ? '' : 'none';
 
     // BLE status pill
     updateBlePill(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
@@ -1310,6 +1313,10 @@ async function setPlan(day) {
 
 // ── Profile ───────────────────────────────────────────────────────────────────
 async function loadProfile() {
+  fetch('/api/version').then(r=>r.json()).then(v=>{
+    const b=document.getElementById('version-badge');
+    if(b) b.textContent=v.version;
+  }).catch(()=>{});
   const p=await fetch('/api/profile').then(r=>r.json());
   if(p.name)      document.getElementById('p-name').value=p.name;
   if(p.weight_kg) document.getElementById('p-weight').value=p.weight_kg;

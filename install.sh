@@ -111,7 +111,7 @@ User=$APP_USER
 WorkingDirectory=$REPO_DIR
 Environment="PATH=$HOME/.local/bin:/usr/local/bin:/usr/bin:/bin"
 ExecStart=$PYTHON_PATH -m uvicorn server:app --host 0.0.0.0 --port 8501
-Restart=on-failure
+Restart=always
 RestartSec=5
 
 [Install]
@@ -120,7 +120,14 @@ EOF
 
 sudo systemctl daemon-reload
 sudo systemctl enable erg
-ok "erg service enabled"
+sudo systemctl restart erg
+ok "erg service installed and running"
+
+# Allow the app user to restart the erg service without a password
+echo "$APP_USER ALL=(ALL) NOPASSWD: /bin/systemctl restart erg, /bin/systemctl stop erg, /bin/systemctl start erg, /usr/bin/systemctl restart erg, /usr/bin/systemctl stop erg, /usr/bin/systemctl start erg" \
+  | sudo tee /etc/sudoers.d/erg-service > /dev/null
+sudo chmod 440 /etc/sudoers.d/erg-service
+ok "sudoers rule added — 'sudo systemctl restart erg' needs no password"
 
 # ── Done ──────────────────────────────────────────────────────────────────────
 echo ""

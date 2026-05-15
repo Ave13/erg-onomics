@@ -70,9 +70,28 @@ threading.Thread(target=_audio_loop, daemon=True, name="audio").start()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+def _git_version():
+    try:
+        import subprocess as _sp
+        h = _sp.check_output(["git","rev-parse","--short","HEAD"], stderr=_sp.DEVNULL).decode().strip()
+        d = _sp.check_output(["git","log","-1","--format=%ci"], stderr=_sp.DEVNULL).decode().strip()[:16]
+        return f"{h} {d}"
+    except Exception:
+        return "unknown"
+
+_VERSION = _git_version()
+
 @app.get("/")
 def index():
-    return FileResponse("static/index.html")
+    return FileResponse(
+        "static/index.html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate",
+                 "X-App-Version": _VERSION}
+    )
+
+@app.get("/api/version")
+def api_version():
+    return {"version": _VERSION}
 
 
 # ── Live state ────────────────────────────────────────────────────────────────
@@ -500,10 +519,11 @@ def api_clear_plan(day: int):
 # ── WiFi management ──────────────────────────────────────────────────────────
 
 def _nmcli(*args, timeout=15):
-    return subprocess.run(
-        ["sudo", "nmcli"] + list(args),
-        capture_output=True, text=True, timeout=timeout
-    )
+    for cmd in [["nmcli"], ["sudo", "nmcli"]]:
+        r = subprocess.run(cmd + list(args), capture_output=True, text=True, timeout=timeout)
+        if r.returncode == 0:
+            return r
+    return r
 
 
 @app.get("/api/wifi/status")
