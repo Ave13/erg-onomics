@@ -503,10 +503,11 @@ def api_clear_plan(day: int):
 # ── WiFi management ──────────────────────────────────────────────────────────
 
 def _nmcli(*args, timeout=15):
-    return subprocess.run(
-        ["sudo", "nmcli"] + list(args),
-        capture_output=True, text=True, timeout=timeout
-    )
+    for cmd in [["nmcli"], ["sudo", "nmcli"]]:
+        r = subprocess.run(cmd + list(args), capture_output=True, text=True, timeout=timeout)
+        if r.returncode == 0:
+            return r
+    return r
 
 
 @app.get("/api/wifi/status")
