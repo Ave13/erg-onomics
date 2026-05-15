@@ -469,6 +469,7 @@ const _flip = {};
 // BLE
 let _bleDevices = [];
 let _bleAddress = localStorage.getItem('bleAddress') || null;
+let _bleConnecting = false;
 // Video / pose
 let _cameraStream = null;
 let _poseDetector = null;
@@ -907,11 +908,13 @@ function updateBlePill(status, name, devices) {
   };
   txt.textContent = labels[status] || status;
 
-  if (status === 'found') {
+  if (status === 'connected' || status === 'disconnected') _bleConnecting = false;
+
+  if (status === 'found' && !_bleConnecting) {
     // If we have a saved preference that matches a found device, auto-connect
     if (_bleAddress) {
       const match = _bleDevices.find(d => d.address === _bleAddress);
-      if (match) { selectErg(match.address, match.name); return; }
+      if (match) { _bleConnecting = true; selectErg(match.address, match.name); return; }
     }
     // Otherwise show the picker
     openErgPicker();
