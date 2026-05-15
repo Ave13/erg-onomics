@@ -509,21 +509,26 @@ def _nmcli(*args, timeout=15):
 @app.get("/api/wifi/status")
 def api_wifi_status():
     try:
-        out = _nmcli("-t", "-f",
-                     "GENERAL.CONNECTION,IP4.ADDRESS[1],GENERAL.STATE",
-                     "dev", "show", _WLAN, timeout=5).stdout
-        info = {}
+        out = _nmcli("-t", "-f", "NAME,TYPE,STATE", "con", "show", "--active", timeout=5).stdout
         for line in out.splitlines():
-            k, _, v = line.partition(":")
-            info[k.strip()] = v.strip()
-        connection = info.get("GENERAL.CONNECTION", "")
-        ip = info.get("IP4.ADDRESS[1]", "").split("/")[0]
-        return {
-            "connection": connection,
-            "ip": ip,
-            "ap_mode": connection == "ErgRower",
-            "interface": _WLAN,
-        }
+            parts = line.split(":")
+            if len(parts) < 2:
+                continue
+            name, con_type = parts[0], parts[1]
+            if "wireless" not in con_type:
+                continue
+            ip = ""
+            try:
+                dev_out = _nmcli("-t", "-f", "IP4.ADDRESS", "con", "show", name, timeout=3).stdout
+                for dl in dev_out.splitlines():
+                    if dl.startswith("IP4.ADDRESS"):
+                        ip = dl.split(":")[-1].split("/")[0]
+                        break
+            except Exception:
+                pass
+            return {"connection": name, "ip": ip,
+                    "ap_mode": name == "ErgRower", "interface": _WLAN}
+        return {"connection": "", "ip": "", "ap_mode": False, "interface": _WLAN}
     except Exception:
         return {"connection": "", "ip": "", "ap_mode": False, "interface": _WLAN}
 

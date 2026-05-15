@@ -319,7 +319,7 @@ def parse_stroke_data(data):
 
     state["drive_time"]        = f"{drive_time_secs:.2f}s"
     state["recovery"]          = f"{recovery_secs:.2f}s"
-    state["drive_length"]      = f"{drive_length_cm}cm"
+    state["drive_length"]      = f"{drive_length_cm / 100:.2f}m"
     state["stroke_count"]      = stroke_count
     state["peak_force_n"]      = peak_force_n
     state["avg_force_n"]       = avg_force_n

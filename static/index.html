@@ -29,7 +29,7 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 /* ── Row page: CSS grid so screen-wrap always gets leftover space ── */
 #page-row.active {
   display: grid;
-  grid-template-rows: auto auto auto 1fr auto auto auto;
+  grid-template-rows: auto auto 1fr auto;
   overflow: hidden;
   padding: 8px 10px 0;
 }
@@ -135,16 +135,29 @@ html,body { height:100%; background:var(--bg); color:var(--value);
               margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
 #target-bar.hidden { display:none !important; }
 
-/* ── Session buttons ── */
-#controls { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
-            margin-top:6px; flex-shrink:0; }
-#controls2 { display:flex; gap:6px; margin-top:4px; flex-shrink:0;
-             padding-bottom: max(6px, env(safe-area-inset-bottom)); }
-#controls2.hidden { display:none; }
-#controls2 button { flex:1; height:34px; border:none; border-radius:8px;
-                    font-size:13px; font-weight:600; cursor:pointer;
-                    background:#2a2b3a; color:var(--label); }
-#controls2 button:active { opacity:.75; }
+/* ── Session menu ── */
+#session-bar { display:flex; align-items:center; justify-content:space-between;
+               padding:6px 0 max(8px,env(safe-area-inset-bottom)); flex-shrink:0; gap:6px; }
+#session-menu-btn { background:var(--card); border:none; border-radius:50%;
+                    width:46px; height:46px; font-size:22px; cursor:pointer;
+                    color:var(--value); flex-shrink:0;
+                    box-shadow:0 2px 8px rgba(0,0,0,.4); }
+#session-menu-btn:active { opacity:.7; }
+#session-quick { display:flex; gap:6px; flex:1; }
+#session-quick button { flex:1; height:46px; border:none; border-radius:10px;
+                         font-size:15px; font-weight:700; cursor:pointer; }
+#session-quick button:active { opacity:.75; }
+#session-quick button:disabled { opacity:.3; cursor:default; }
+/* Slide-up session panel */
+#session-panel { display:none; position:fixed; bottom:0; left:0; right:0; z-index:200;
+                 background:var(--card); border-radius:18px 18px 0 0;
+                 padding:16px 16px max(20px,env(safe-area-inset-bottom));
+                 box-shadow:0 -4px 24px rgba(0,0,0,.5); }
+#session-panel.open { display:block; }
+#session-panel h4 { text-align:center; color:var(--label); font-size:13px;
+                    font-weight:600; margin-bottom:14px; text-transform:uppercase;
+                    letter-spacing:.06em; }
+#session-panel .btn-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
 button.btn { height:52px; border:none; border-radius:10px;
              font-size:16px; font-weight:700; cursor:pointer; width:100%; }
 button.btn:active { opacity:.75; }
@@ -316,19 +329,23 @@ button.sm:active { opacity:.75; }
 
   <div id="screen-wrap"><!-- rendered by renderScreen() --></div>
 
-  <div id="target-bar" class="hidden">
-    <span id="target-label"></span>
-    <button class="sm" onclick="clearTarget()">Clear</button>
+  <div id="session-bar">
+    <button id="session-menu-btn" onclick="toggleSessionPanel()">⊙</button>
+    <div id="session-quick">
+      <button id="btn-start" class="btn-start" onclick="doStart()">Start</button>
+      <button id="btn-pause" class="btn-pause" onclick="doPause()" disabled>Pause</button>
+      <button id="btn-end"   class="btn-end"   onclick="doEnd()"   disabled>End</button>
+    </div>
   </div>
+</div>
 
-  <div id="controls">
-    <button class="btn btn-start" id="btn-start" onclick="doStart()">Start</button>
-    <button class="btn btn-pause" id="btn-pause" onclick="doPause()" disabled>Pause</button>
-    <button class="btn btn-end"   id="btn-end"   onclick="doEnd()"   disabled>End</button>
-  </div>
-  <div id="controls2">
-    <button class="btn btn-neutral" onclick="openTargetModal()">Target Pace</button>
-    <button class="btn btn-neutral" onclick="nav('workouts')">Workout</button>
+<!-- ══ SESSION PANEL ════════════════════════════════════════════════════════ -->
+<div id="session-panel">
+  <h4>Session</h4>
+  <div class="btn-row">
+    <button class="btn btn-neutral" onclick="openTargetModal();closeSessionPanel()">Target Pace</button>
+    <button class="btn btn-neutral" onclick="nav('workouts');closeSessionPanel()">Workout</button>
+    <button class="btn btn-neutral" onclick="closeSessionPanel()">Close</button>
   </div>
 </div>
 
@@ -395,7 +412,10 @@ button.sm:active { opacity:.75; }
 
 <!-- ══ PROFILE PAGE ═════════════════════════════════════════════════════════ -->
 <div id="page-profile" class="page">
-  <h3>Profile</h3>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+    <h3 style="margin:0">Profile</h3>
+    <span style="font-size:11px;color:var(--label)">v1.0.0</span>
+  </div>
   <div class="form-row"><label>Name</label><input id="p-name" type="text" placeholder="Your name"></div>
   <div class="form-row"><label>Weight (kg)</label><input id="p-weight" type="number" step="0.5" min="30" max="200"></div>
   <div class="form-row"><label>Height</label>
@@ -690,7 +710,7 @@ function driveDelta() {
   const ex = _s.expected_drive_cm;
   if (!dl || !ex) return '--';
   const d = dl - ex;
-  return (d >= 0 ? '+' : '') + d + 'cm';
+  return (d >= 0 ? '+' : '') + (d / 100).toFixed(2) + 'm';
 }
 function deltaClass() {
   const dl = _s.drive_length_cm_raw;
@@ -994,8 +1014,6 @@ async function tick() {
     if (bs) bs.disabled = _active;
     if (bp) { bp.disabled = !_active; bp.textContent = _paused ? 'Resume' : 'Pause'; }
     if (be) be.disabled = !_active;
-    const c2 = document.getElementById('controls2');
-    if (c2) c2.classList.toggle('hidden', _active);
 
     // BLE status pill
     updateBlePill(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
@@ -1050,6 +1068,13 @@ async function dismissResume() {
 }
 
 // ── Target pace ───────────────────────────────────────────────────────────────
+function toggleSessionPanel() {
+  document.getElementById('session-panel').classList.toggle('open');
+}
+function closeSessionPanel() {
+  document.getElementById('session-panel').classList.remove('open');
+}
+
 function openTargetModal() {
   if (_targetSec) {
     document.getElementById('tgt-min').value = Math.floor(_targetSec/60);
