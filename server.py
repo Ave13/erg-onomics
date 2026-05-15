@@ -72,7 +72,10 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 @app.get("/")
 def index():
-    return FileResponse("static/index.html")
+    return FileResponse(
+        "static/index.html",
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate"}
+    )
 
 
 # ── Live state ────────────────────────────────────────────────────────────────
