@@ -34,8 +34,8 @@ static/index.html  tick() → renderScreen()
 |---|---|---|
 | `drive_time_secs` | float | seconds |
 | `recovery_secs` | float | seconds |
-| `drive_length_cm_raw` | float | raw cm |
-| `drive_length` | str | formatted, e.g. `"135cm"` |
+| `drive_length_cm_raw` | float | raw cm — used for delta calculation |
+| `drive_length` | str | formatted in metres, e.g. `"0.72m"` |
 | `drive_time` | str | formatted, e.g. `"0.72s"` |
 | `recovery` | str | formatted, e.g. `"1.13s"` |
 | `peak_force_n` | float | Newtons |
@@ -77,12 +77,13 @@ The browser rebuilds screen HTML every 500 ms. Two screens are exceptions — th
 
 | Screen | Why stable | In-place update |
 |---|---|---|
-| **Screen 3 — Force Curve** | `<canvas>` loses its drawn content if the element is destroyed | `drawForce()` called each tick via `requestAnimationFrame`; streak numbers patched via `fc-streak-num` / `fc-streak-best` |
-| **Screen 4 — Intervals** | Progress bar has `transition: width 0.5s`; rebuilding the element resets the transition to instant | `_updateIntervalsInPlace()` patches `iv-idx`, `iv-of`, `iv-phase`, `iv-bar`, `iv-rem` each tick |
+| **Screen 3 — Force Curve** | `<canvas>` loses its drawn content if the element is destroyed | `drawForce()` called each tick via `requestAnimationFrame`; streak numbers patched in `renderScreen()` stable branch |
+| **Screen 4 — Intervals** | Progress bar has `transition: width 0.5s`; rebuilding the element resets the transition to instant | `_updateIntervalsInPlace()` patches `iv-num`, `iv-of`, `iv-phase`, `iv-progress-bar`, `iv-remaining` each tick |
+| **Screen 5 — Video** | `<video>` camera stream and `<canvas>` skeleton overlay must not be destroyed mid-session | `_updateAnglePills()` patches pill text; `drawSkeleton()` called via rAF |
 
-### Screens that rebuild each tick (acceptable)
+### Screens that rebuild on swipe arrival only (0–2)
 
-Power, Endurance, Technique — no canvas, no transitions that need continuity.
+Power, Endurance, Technique — no canvas, no transitions that need continuity. They rebuild when `_screen !== _lastScreen`. Once built, they are NOT rebuilt on subsequent ticks.
 
 ---
 
