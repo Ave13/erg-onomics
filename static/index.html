@@ -136,18 +136,11 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 #target-bar.hidden { display:none !important; }
 
 /* ── Session menu ── */
-#session-bar { display:flex; align-items:center; justify-content:space-between;
-               padding:6px 0 max(8px,env(safe-area-inset-bottom)); flex-shrink:0; gap:6px; }
-#session-menu-btn { background:var(--card); border:none; border-radius:50%;
-                    width:46px; height:46px; font-size:22px; cursor:pointer;
-                    color:var(--value); flex-shrink:0;
-                    box-shadow:0 2px 8px rgba(0,0,0,.4); }
+#session-bar { padding:6px 0 max(8px,env(safe-area-inset-bottom)); flex-shrink:0; }
+#session-menu-btn { width:100%; height:44px; background:var(--card); border:none;
+                    border-radius:12px; font-size:14px; font-weight:600; cursor:pointer;
+                    color:var(--label); box-shadow:0 2px 8px rgba(0,0,0,.4); }
 #session-menu-btn:active { opacity:.7; }
-#session-quick { display:flex; gap:6px; flex:1; }
-#session-quick button { flex:1; height:46px; border:none; border-radius:10px;
-                         font-size:15px; font-weight:700; cursor:pointer; }
-#session-quick button:active { opacity:.75; }
-#session-quick button:disabled { opacity:.3; cursor:default; }
 /* Slide-up session panel */
 #session-panel { display:none; position:fixed; bottom:0; left:0; right:0; z-index:200;
                  background:var(--card); border-radius:18px 18px 0 0;
@@ -330,18 +323,19 @@ button.sm:active { opacity:.75; }
   <div id="screen-wrap"><!-- rendered by renderScreen() --></div>
 
   <div id="session-bar">
-    <button id="session-menu-btn" onclick="toggleSessionPanel()">⊙</button>
-    <div id="session-quick">
-      <button id="btn-start" class="btn-start" onclick="doStart()">Start</button>
-      <button id="btn-pause" class="btn-pause" onclick="doPause()" disabled>Pause</button>
-      <button id="btn-end"   class="btn-end"   onclick="doEnd()"   disabled>End</button>
-    </div>
+    <button id="session-menu-btn" onclick="toggleSessionPanel()">
+      <span id="session-bar-label">Ready</span>
+    </button>
   </div>
 </div>
 
 <!-- ══ SESSION PANEL ════════════════════════════════════════════════════════ -->
 <div id="session-panel">
-  <h4>Session</h4>
+  <div class="btn-row" style="margin-bottom:8px">
+    <button class="btn btn-start"  id="btn-start" onclick="doStart();closeSessionPanel()">Start</button>
+    <button class="btn btn-pause"  id="btn-pause" onclick="doPause();closeSessionPanel()" disabled>Pause</button>
+    <button class="btn btn-end"    id="btn-end"   onclick="doEnd();closeSessionPanel()"   disabled>End</button>
+  </div>
   <div class="btn-row">
     <button class="btn btn-neutral" onclick="openTargetModal();closeSessionPanel()">Target Pace</button>
     <button class="btn btn-neutral" onclick="nav('workouts');closeSessionPanel()">Workout</button>
@@ -1007,7 +1001,9 @@ async function tick() {
       else              st.textContent = _s.user_name || 'Ready';
     }
 
-    // Buttons
+    // Session bar label + panel buttons
+    const lbl = document.getElementById('session-bar-label');
+    if (lbl) lbl.textContent = _paused ? '⏸ Paused — tap to control' : _active ? '⬤ Recording — tap to control' : 'Tap to start session';
     const bs = document.getElementById('btn-start');
     const bp = document.getElementById('btn-pause');
     const be = document.getElementById('btn-end');
