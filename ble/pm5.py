@@ -56,6 +56,9 @@ state = {
     "interval_index": 0,
     "interval_phase": "work",   # "work" | "rest" | "done"
     "interval_remaining": None,
+    # ToF seat sensor
+    "seat_mm": None,         # current distance reading (mm)
+    "seat_drive_mm": None,   # last stroke seat drive amplitude (mm)
     # BLE connection status
     "ble_status": "scanning",   # "scanning" | "found" | "connecting" | "connected" | "disconnected"
     "ble_devices": [],          # [{"address": str, "name": str}] — discovered PM5s
@@ -94,7 +97,8 @@ def _calc_spm():
 def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
                 drive_time_secs=None, recovery_secs=None,
                 drive_length_cm=None, avg_force_n=None, peak_force_n=None,
-                work_per_stroke_j=None, stroke_distance_m=None):
+                work_per_stroke_j=None, stroke_distance_m=None,
+                seat_drive_mm=None):
     if state.get("session_paused"):
         return
     # Derived correlation metrics
@@ -107,14 +111,14 @@ def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
                 "(stroke_num, elapsed_secs, interval_secs, speed_mm_s, logged_at, "
                 " drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n, "
                 " session_id, hr_bpm, work_per_stroke_j, stroke_distance_m, "
-                " watts, peak_avg_ratio) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " watts, peak_avg_ratio, seat_drive_mm) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (stroke_num, elapsed_secs, round(interval_secs, 4), speed_mm_s, time.time(),
                  drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n,
                  state["session_id"],
                  state["hr_bpm"] if isinstance(state["hr_bpm"], int) else None,
                  work_per_stroke_j, stroke_distance_m,
-                 watts, peak_avg_ratio),
+                 watts, peak_avg_ratio, seat_drive_mm),
             )
     except Exception:
         pass
@@ -183,6 +187,7 @@ def _init_db():
                 ("stroke_log", "layback_angle_deg",  "REAL"),
                 ("stroke_log", "arm_break_pct",      "REAL"),  # % through drive when arms bend
                 ("stroke_log", "video_ts",           "REAL"),  # wall-clock time of matching frame
+                ("stroke_log", "seat_drive_mm",      "INTEGER"),
                 ("sessions",   "user_id",            "INTEGER"),
                 ("sessions",   "workout_id",         "INTEGER"),
                 ("sessions",   "started_at",         "REAL"),
@@ -348,6 +353,7 @@ def parse_stroke_data(data):
             stroke_count, state["elapsed"], interval, state["speed_mm_s"],
             drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n,
             work_per_stroke_j, stroke_distance_m,
+            seat_drive_mm=state.get("seat_drive_mm"),
         )
 
     # Perfect-stroke streak evaluation

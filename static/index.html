@@ -797,7 +797,12 @@ function renderTechnique() {
     <div class="metric-row cols2">
       <div class="tech-card"><div class="lbl">Drag Factor</div><div class="val">${_s.drag_factor??'--'}</div></div>
       <div class="tech-card"><div class="lbl">SPM</div><div class="val">${_s.spm??'--'}</div></div>
-    </div>`;
+    </div>
+    ${_s.seat_drive_mm != null ? `
+    <div class="metric-row cols2">
+      <div class="tech-card"><div class="lbl">Seat Drive</div><div class="val">${_s.seat_drive_mm}mm</div></div>
+      <div class="tech-card"><div class="lbl">Seat Dist</div><div class="val">${_s.seat_mm != null ? _s.seat_mm+'mm' : '--'}</div></div>
+    </div>` : ''}`;
 }
 
 // ── Screen 3: Force Curve + Streak ────────────────────────────────────────────
@@ -983,16 +988,16 @@ function _updateIntervalsInPlace() {
   ].filter(Boolean).join(' · ');
 }
 
-function formatRem(sec, phase) {
-  if (phase === 'work' && _s.active_workout_name) {
-    // If distance-based show metres remaining
-    const wid = _s.active_workout_id;
-    // sec is metres remaining for distance intervals, seconds for time
-    if (sec > 60) return `${sec}m`;
+function formatRem(rem, phase) {
+  if (phase === 'rest' || _s.interval_goal_type !== 'distance') {
+    return `${Math.floor(rem/60)}:${String(rem%60).padStart(2,'0')}`;
   }
-  return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
+  return `${rem}m`;
 }
-function estimateTotal(phase) { return 60; }  // rough divisor for progress bar
+function estimateTotal(phase) {
+  if (phase === 'rest') return _s.interval_rest_secs || 120;
+  return _s.interval_goal_value || 60;
+}
 
 // ── BLE device selection ──────────────────────────────────────────────────────
 function updateBlePill(status, name, devices) {

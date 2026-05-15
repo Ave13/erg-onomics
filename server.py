@@ -18,6 +18,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from sensors.tof import start_tof
 from ble.pm5 import (
     state, start_ble,
     start_session, stop_session, pause_session, resume_session,
@@ -58,6 +59,7 @@ _ble_thread = threading.Thread(target=start_ble, daemon=True, name="ble")
 _ble_thread.start()
 
 start_ftms()
+start_tof(state)
 
 def _audio_loop():
     while True:
@@ -191,14 +193,25 @@ def api_state():
                 s["interval_target_spm"]     = iv.get("target_spm")
                 s["interval_target_hr_zone"] = iv.get("target_hr_zone")
                 s["interval_target_watts"]   = iv.get("target_watts")
+                s["interval_goal_type"]      = iv.get("type")
+                s["interval_goal_value"]     = (
+                    iv.get("meters")   if iv.get("type") == "distance" else
+                    iv.get("seconds")  if iv.get("type") == "time"     else
+                    iv.get("calories") if iv.get("type") == "calorie"  else
+                    None
+                )
+                s["interval_rest_secs"] = iv.get("rest_secs", 0)
             else:
                 s["interval_target_spm"] = s["interval_target_hr_zone"] = s["interval_target_watts"] = None
+                s["interval_goal_type"] = s["interval_goal_value"] = s["interval_rest_secs"] = None
         else:
             s["interval_total"] = 0
             s["interval_target_spm"] = s["interval_target_hr_zone"] = s["interval_target_watts"] = None
+            s["interval_goal_type"] = s["interval_goal_value"] = s["interval_rest_secs"] = None
     else:
         s["interval_total"] = 0
         s["interval_target_spm"] = s["interval_target_hr_zone"] = s["interval_target_watts"] = None
+        s["interval_goal_type"] = s["interval_goal_value"] = s["interval_rest_secs"] = None
     return JSONResponse(s)
 
 
