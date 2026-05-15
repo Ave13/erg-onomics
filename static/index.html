@@ -994,6 +994,12 @@ async function tick() {
     _active = _s.session_active;
     _paused = _s.session_paused;
 
+    // Hide header row during active session to give metrics more space
+    const hdr = document.getElementById('row-header');
+    const slbl = document.getElementById('screen-label');
+    if (hdr)  hdr.style.display  = _active ? 'none' : '';
+    if (slbl) slbl.style.display = _active ? 'none' : '';
+
     // Status bar
     const st = document.getElementById('status');
     if (st) {
