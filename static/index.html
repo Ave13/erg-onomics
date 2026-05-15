@@ -27,13 +27,19 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 .page { display:none; flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:10px; min-height:0; }
 .page.active { display:block; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 
-/* ── Row page: CSS grid so screen-wrap always gets leftover space ── */
+/* ── Row page: CSS grid — explicit rows so screen-wrap always gets 1fr ── */
 #page-row.active {
   display: grid;
-  grid-template-rows: auto auto 1fr auto;
+  grid-template-rows: auto auto auto auto 1fr auto;
   overflow: hidden;
   padding: 8px 10px 0;
 }
+#page-row > #resume-prompt { grid-row: 1; }
+#page-row > #row-header    { grid-row: 2; }
+#page-row > #screen-label  { grid-row: 3; }
+#page-row > #target-bar    { grid-row: 4; }
+#page-row > #screen-wrap   { grid-row: 5; }
+#page-row > #session-bar   { grid-row: 6; }
 
 /* ── Row page layout ── */
 #row-header { display:flex; align-items:center; justify-content:space-between;
@@ -131,7 +137,7 @@ html,body { height:100%; background:var(--bg); color:var(--value);
                 text-align:center; margin-top:8px; }
 
 /* ── Target pace bar ── */
-#target-bar { display:none; background:#2a2a1e; border-left:4px solid var(--yellow);
+#target-bar { background:#2a2a1e; border-left:4px solid var(--yellow);
               border-radius:4px; padding:6px 12px; font-size:13px; color:var(--yellow);
               margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
 #target-bar.hidden { display:none !important; }
@@ -321,6 +327,11 @@ button.sm:active { opacity:.75; }
   </div>
   <div id="screen-label"></div>
 
+  <div id="target-bar" class="hidden">
+    <span id="target-label"></span>
+    <button onclick="clearTarget()" style="background:none;border:none;color:var(--yellow);font-size:18px;padding:0;cursor:pointer;line-height:1">✕</button>
+  </div>
+
   <div id="screen-wrap"><!-- rendered by renderScreen() --></div>
 
   <div id="session-bar">
@@ -446,10 +457,6 @@ button.sm:active { opacity:.75; }
     </div>
   </div>
   <div id="wifi-msg" style="font-size:13px;min-height:18px;margin-top:6px"></div>
-
-  <div style="text-align:center;color:var(--label);font-size:11px;margin-top:24px;padding-bottom:8px">
-    v1.0.0
-  </div>
 </div>
 
 <!-- ══ TARGET PACE MODAL ════════════════════════════════════════════════════ -->
@@ -598,20 +605,11 @@ function renderScreen() {
 function bindFlipCards() {
   document.querySelectorAll('[data-flip]').forEach(el => {
     el.onclick = () => {
-      const key = el.dataset.flip;
-      const alts = JSON.parse(el.dataset.alts);
-      _flip[key] = ((_flip[key] || 0) + 1) % alts.length;
-      updateFlipCard(el, alts[_flip[key]]);
+      _flip[el.dataset.flip] = (_flip[el.dataset.flip] || 0) + 1;
+      _lastScreen = -1;
+      renderScreen();
     };
   });
-}
-function flipVal(key, alts) {
-  const i = _flip[key] || 0;
-  return alts[i];
-}
-function updateFlipCard(el, alt) {
-  el.querySelector('.lbl').textContent = alt.label;
-  el.querySelector('.val').textContent = alt.value()||'--';
 }
 
 // alt definitions keyed by slot name
@@ -623,17 +621,17 @@ function alts_watts() { return [{label:'Watts', value:()=>_s.watts??0}, {label:'
 function alts_hr()    { return [{label:'HR', value:()=>_s.hr_bpm??'--'}, {label:'Calories', value:()=>'--'}]; }
 
 function card(key, alts, extra='') {
-  const i = _flip[key] || 0;
+  const i = (_flip[key] || 0) % alts.length;
   const a = alts[i];
-  return `<div class="card${extra}" data-flip="${key}" data-alts='${JSON.stringify(alts)}'>
+  return `<div class="card ${extra}" data-flip="${key}">
     <div class="lbl">${a.label}</div>
     <div class="val">${a.value()??'--'}</div>
   </div>`;
 }
 function heroCard(key, alts, extraClass='') {
-  const i = _flip[key] || 0;
+  const i = (_flip[key] || 0) % alts.length;
   const a = alts[i];
-  return `<div class="hero-card ${extraClass}" data-flip="${key}" data-alts='${JSON.stringify(alts)}'>
+  return `<div class="hero-card ${extraClass}" data-flip="${key}">
     <div class="lbl">${a.label}</div>
     <div class="val">${a.value()??'--'}</div>
   </div>`;
@@ -644,13 +642,13 @@ function renderPower() {
   return `
     ${heroCard('watts', alts_watts())}
     <div class="metric-row cols3">
-      ${card('pace','p0',alts_pace())}
-      ${card('spm','p1',alts_spm())}
-      ${card('strokes','p2',[{label:'Strokes', value:()=>_s.stroke_count??0},{label:'SPM',value:()=>_s.spm??'--'}])}
+      ${card('pace',alts_pace())}
+      ${card('spm',alts_spm())}
+      ${card('strokes',[{label:'Strokes', value:()=>_s.stroke_count??0},{label:'SPM',value:()=>_s.spm??'--'}])}
     </div>
     <div class="metric-row cols2">
-      ${card('dist','p3',alts_dist())}
-      ${card('time','p4',alts_time())}
+      ${card('dist',alts_dist())}
+      ${card('time',alts_time())}
     </div>`;
 }
 
@@ -670,19 +668,21 @@ function renderEndurance() {
   }
   const zoneNames = ['Z1 Easy','Z2 Aerobic','Z3 Tempo','Z4 Threshold','Z5 Max'];
   const hrStyle = zoneColor ? `style="color:${zoneColor}"` : '';
+  const hrAlts = alts_hr();
+  const hrAlt  = hrAlts[(_flip['hr'] || 0) % hrAlts.length];
   return `
-    <div class="hero-card hr-card" data-flip="hr" data-alts='${JSON.stringify(alts_hr())}'>
-      <div class="lbl">HR</div>
-      <div class="val" ${hrStyle}>${hr??'--'}</div>
+    <div class="hero-card hr-card" data-flip="hr">
+      <div class="lbl">${hrAlt.label}</div>
+      <div class="val" ${hrStyle}>${hrAlt.value()??'--'}</div>
       ${zone >= 0 ? `<div class="sub">${zoneNames[zone]}</div>` : ''}
     </div>
     <div id="zone-strip">${ZONE_COLORS.map((c,i)=>
       `<span style="flex:${i===zone?'2':'1'};background:${c};opacity:${i===zone?1:.35}"></span>`
     ).join('')}</div>
     <div class="metric-row cols3">
-      ${card('e-pace','e0',alts_pace())}
-      ${card('e-dist','e1',alts_dist())}
-      ${card('e-time','e2',alts_time())}
+      ${card('e-pace',alts_pace())}
+      ${card('e-dist',alts_dist())}
+      ${card('e-time',alts_time())}
     </div>`;
 }
 
@@ -891,8 +891,8 @@ function renderIntervals() {
       <div id="iv-remaining">${remStr}</div>
     </div>
     <div class="metric-row cols2">
-      ${card('iv-pace','ip0',alts_pace())}
-      ${card('iv-dist','ip1',alts_dist())}
+      ${card('iv-pace',alts_pace())}
+      ${card('iv-dist',alts_dist())}
     </div>`;
 }
 function _updateIntervalsInPlace() {

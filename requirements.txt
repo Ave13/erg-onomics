@@ -1,4 +1,5 @@
 bleak>=0.21.0
 kivy[base]>=2.3.0
-streamlit>=1.36.0
-plotly>=5.0
+fastapi>=0.110.0
+"uvicorn[standard]>=0.29.0"
+bless>=0.2.5

@@ -72,9 +72,8 @@ app.mount("/static", StaticFiles(directory="static"), name="static")
 
 def _git_version():
     try:
-        import subprocess as _sp
-        h = _sp.check_output(["git","rev-parse","--short","HEAD"], stderr=_sp.DEVNULL).decode().strip()
-        d = _sp.check_output(["git","log","-1","--format=%ci"], stderr=_sp.DEVNULL).decode().strip()[:16]
+        h = subprocess.check_output(["git","rev-parse","--short","HEAD"], stderr=subprocess.DEVNULL).decode().strip()
+        d = subprocess.check_output(["git","log","-1","--format=%ci"], stderr=subprocess.DEVNULL).decode().strip()[:16]
         return f"{h} {d}"
     except Exception:
         return "unknown"
