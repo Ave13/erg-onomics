@@ -11,7 +11,7 @@
 :root {
   --bg:#0d0d14; --card:#1a1b27; --label:#737aaa; --value:#f2f2f8;
   --green:#2ECC71; --red:#E74C3C; --hr-red:#f25757; --blue:#2e8cd9;
-  --orange:#f27320; --yellow:#e6c21a; --btn-h:64px;
+  --orange:#f27320; --yellow:#e6c21a;
 }
 html,body { height:100%; background:var(--bg); color:var(--value);
             font-family:-apple-system,sans-serif; overflow:hidden; }
@@ -23,9 +23,16 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 #nav button.active { color:var(--value); border-bottom:2px solid var(--blue); }
 
 /* ── Page shell ── */
-#shell { display:flex; flex-direction:column; height:100vh; }
-.page { display:none; flex:1; overflow-y:auto; padding:10px; }
-.page.active { display:flex; flex-direction:column; }
+#shell { display:flex; flex-direction:column; height:100vh; height:100dvh; }
+.page { display:none; flex:1; overflow-y:auto; padding:10px; min-height:0; }
+
+/* ── Row page: CSS grid so screen-wrap always gets leftover space ── */
+#page-row.active {
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  overflow: hidden;
+  padding: 8px 10px 0;
+}
 
 /* ── Row page layout ── */
 #row-header { display:flex; align-items:center; justify-content:space-between;
@@ -38,10 +45,10 @@ html,body { height:100%; background:var(--bg); color:var(--value);
                     background:#2a2b3a; transition:background .2s; }
 #screen-dots span.active { background:var(--blue); width:9px; height:9px;
                             box-shadow:0 0 6px rgba(46,140,217,.6); }
-#screen-label { font-size:12px; color:var(--label); text-align:center; margin-bottom:6px; }
+#screen-label { font-size:12px; color:var(--label); text-align:center; margin-bottom:4px; }
 
-/* ── Swipeable screen area — hosts the grid8 ── */
-#screen-wrap { flex:1; touch-action:pan-y; min-height:0; display:flex; flex-direction:column; }
+/* ── Swipeable screen area ── */
+#screen-wrap { min-height:0; overflow:hidden; display:flex; flex-direction:column; touch-action:pan-y; }
 
 /* ── Hero metric (large centre value) ── */
 .hero-card { background:var(--card); border-radius:14px; padding:14px 10px 10px;
@@ -128,9 +135,29 @@ html,body { height:100%; background:var(--bg); color:var(--value);
               margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; }
 #target-bar.hidden { display:none !important; }
 
-/* ── Session buttons ── */
-#controls { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
-            margin-top:6px; flex-shrink:0; }
+/* ── Session menu ── */
+#session-bar { display:flex; align-items:center; justify-content:space-between;
+               padding:6px 0 max(8px,env(safe-area-inset-bottom)); flex-shrink:0; gap:6px; }
+#session-menu-btn { background:var(--card); border:none; border-radius:50%;
+                    width:46px; height:46px; font-size:22px; cursor:pointer;
+                    color:var(--value); flex-shrink:0;
+                    box-shadow:0 2px 8px rgba(0,0,0,.4); }
+#session-menu-btn:active { opacity:.7; }
+#session-quick { display:flex; gap:6px; flex:1; }
+#session-quick button { flex:1; height:46px; border:none; border-radius:10px;
+                         font-size:15px; font-weight:700; cursor:pointer; }
+#session-quick button:active { opacity:.75; }
+#session-quick button:disabled { opacity:.3; cursor:default; }
+/* Slide-up session panel */
+#session-panel { display:none; position:fixed; bottom:0; left:0; right:0; z-index:200;
+                 background:var(--card); border-radius:18px 18px 0 0;
+                 padding:16px 16px max(20px,env(safe-area-inset-bottom));
+                 box-shadow:0 -4px 24px rgba(0,0,0,.5); }
+#session-panel.open { display:block; }
+#session-panel h4 { text-align:center; color:var(--label); font-size:13px;
+                    font-weight:600; margin-bottom:14px; text-transform:uppercase;
+                    letter-spacing:.06em; }
+#session-panel .btn-row { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; }
 button.btn { height:52px; border:none; border-radius:10px;
              font-size:16px; font-weight:700; cursor:pointer; width:100%; }
 button.btn:active { opacity:.75; }
@@ -277,7 +304,7 @@ button.sm:active { opacity:.75; }
   <button onclick="nav('history')">History</button>
   <button onclick="nav('workouts')">Workouts</button>
   <button onclick="nav('plan')">Plan</button>
-  <button onclick="nav('profile')">Setup</button>
+  <button onclick="nav('profile')">Profile</button>
 </div>
 
 <!-- ══ ROW PAGE ══════════════════════════════════════════════════════════════ -->
@@ -286,34 +313,39 @@ button.sm:active { opacity:.75; }
     <p id="resume-msg"></p>
     <div class="row">
       <button class="btn btn-start" style="height:46px;font-size:15px" onclick="doResume()">Resume</button>
-      <button class="btn btn-neutral" style="height:46px;font-size:15px" onclick="dismissResume()">New</button>
+      <button class="btn btn-neutral" style="height:46px;font-size:15px" onclick="dismissResume()">Start New</button>
     </div>
   </div>
 
   <div id="row-header">
     <div id="status">Ready</div>
-    <div style="display:flex;align-items:center;gap:8px">
-      <button id="ble-pill" onclick="openErgPicker()">
-        <span id="ble-dot" class="scanning"></span>
-        <span id="ble-text">Scanning…</span>
-      </button>
-      <button class="sm" id="btn-target" onclick="openTargetModal()" style="opacity:.6">⊕ Pace</button>
-    </div>
+    <button id="ble-pill" onclick="openErgPicker()">
+      <span id="ble-dot" class="scanning"></span>
+      <span id="ble-text">Scanning…</span>
+    </button>
     <div id="screen-dots"></div>
   </div>
   <div id="screen-label"></div>
 
-  <div id="target-bar" class="hidden">
-    <span id="target-label"></span>
-    <button class="sm" onclick="clearTarget()">✕</button>
+  <div id="screen-wrap"><!-- rendered by renderScreen() --></div>
+
+  <div id="session-bar">
+    <button id="session-menu-btn" onclick="toggleSessionPanel()">⊙</button>
+    <div id="session-quick">
+      <button id="btn-start" class="btn-start" onclick="doStart()">Start</button>
+      <button id="btn-pause" class="btn-pause" onclick="doPause()" disabled>Pause</button>
+      <button id="btn-end"   class="btn-end"   onclick="doEnd()"   disabled>End</button>
+    </div>
   </div>
+</div>
 
-  <div id="screen-wrap"><!-- filled by renderScreen() --></div>
-
-  <div id="controls">
-    <button class="btn btn-start" id="btn-start" onclick="doStart()">Start</button>
-    <button class="btn btn-pause" id="btn-pause" onclick="doPause()" disabled>Pause</button>
-    <button class="btn btn-end"   id="btn-end"   onclick="doEnd()"   disabled>End</button>
+<!-- ══ SESSION PANEL ════════════════════════════════════════════════════════ -->
+<div id="session-panel">
+  <h4>Session</h4>
+  <div class="btn-row">
+    <button class="btn btn-neutral" onclick="openTargetModal();closeSessionPanel()">Target Pace</button>
+    <button class="btn btn-neutral" onclick="nav('workouts');closeSessionPanel()">Workout</button>
+    <button class="btn btn-neutral" onclick="closeSessionPanel()">Close</button>
   </div>
 </div>
 
@@ -378,55 +410,12 @@ button.sm:active { opacity:.75; }
   <div id="plan-grid"></div>
 </div>
 
-<!-- ══ SETUP PAGE (Profile + Connections) ══════════════════════════════════ -->
+<!-- ══ PROFILE PAGE ═════════════════════════════════════════════════════════ -->
 <div id="page-profile" class="page">
-
-  <!-- ── Connections ── -->
-  <h3>Connections</h3>
-
-  <!-- Erg / BLE card -->
-  <div onclick="openErgPicker()" style="background:var(--card);border-radius:12px;
-       padding:14px;margin-bottom:8px;cursor:pointer;display:flex;align-items:center;gap:12px">
-    <span id="ble-card-dot" style="width:11px;height:11px;border-radius:50%;
-          background:var(--label);flex-shrink:0"></span>
-    <div style="flex:1">
-      <div style="font-size:11px;color:var(--label);text-transform:uppercase;letter-spacing:.07em">Erg · Bluetooth</div>
-      <div id="ble-card-text" style="font-size:16px;font-weight:600;margin-top:3px">Scanning…</div>
-    </div>
-    <span style="color:var(--label);font-size:22px">›</span>
+  <div style="display:flex;justify-content:space-between;align-items:baseline;margin-bottom:4px">
+    <h3 style="margin:0">Profile</h3>
+    <span style="font-size:11px;color:var(--label)">v1.0.0</span>
   </div>
-
-  <!-- WiFi card -->
-  <div style="background:var(--card);border-radius:12px;padding:14px;margin-bottom:16px">
-    <div style="display:flex;align-items:center;gap:12px;margin-bottom:14px">
-      <span id="wifi-dot" style="width:11px;height:11px;border-radius:50%;
-            background:var(--label);flex-shrink:0"></span>
-      <div>
-        <div style="font-size:11px;color:var(--label);text-transform:uppercase;letter-spacing:.07em">WiFi</div>
-        <div id="wifi-status-txt" style="font-size:16px;font-weight:600;margin-top:3px">Checking…</div>
-      </div>
-    </div>
-    <div id="wifi-saved-wrap"></div>
-    <button class="btn btn-neutral" style="height:46px;font-size:14px;margin-bottom:6px"
-            onclick="wifiScan()">Scan for Networks</button>
-    <div id="wifi-scan-list"></div>
-    <div id="wifi-join-wrap" style="display:none">
-      <div class="form-row" style="margin-top:8px">
-        <label id="wifi-join-label">Password for …</label>
-        <input id="wifi-pwd" type="password" placeholder="WiFi password" autocomplete="off"
-               style="width:100%;height:46px;background:#111118;color:var(--value);
-                      border:1px solid #2a2b3a;border-radius:8px;padding:0 12px;font-size:16px">
-      </div>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn-neutral" style="height:46px" onclick="wifiJoinCancel()">Cancel</button>
-        <button class="btn btn-start"   style="height:46px" onclick="wifiJoinConfirm()">Join</button>
-      </div>
-    </div>
-    <div id="wifi-msg" style="font-size:13px;min-height:18px;margin-top:6px"></div>
-  </div>
-
-  <!-- ── Profile ── -->
-  <h3>Profile</h3>
   <div class="form-row"><label>Name</label><input id="p-name" type="text" placeholder="Your name"></div>
   <div class="form-row"><label>Weight (kg)</label><input id="p-weight" type="number" step="0.5" min="30" max="200"></div>
   <div class="form-row"><label>Height</label>
@@ -462,6 +451,10 @@ button.sm:active { opacity:.75; }
     </div>
   </div>
   <div id="wifi-msg" style="font-size:13px;min-height:18px;margin-top:6px"></div>
+
+  <div style="text-align:center;color:var(--label);font-size:11px;margin-top:24px;padding-bottom:8px">
+    v1.0.0
+  </div>
 </div>
 
 <!-- ══ TARGET PACE MODAL ════════════════════════════════════════════════════ -->
@@ -606,100 +599,64 @@ function renderScreen() {
   bindFlipCards();
 }
 
-function _updateIntervalsInPlace() {
-  const total = _s.interval_total ?? 0;
-  if (!total) return;
-  const idx   = (_s.interval_index ?? 0) + 1;
-  const phase = _s.interval_phase ?? 'work';
-  const rem   = _s.interval_remaining;
-  const phaseColor = phase==='work' ? 'var(--green)' : phase==='rest' ? 'var(--orange)' : 'var(--label)';
-  const phaseLabel = phase==='work' ? 'WORK' : phase==='rest' ? 'REST' : 'DONE';
-  const pct = rem != null && rem > 0
-    ? Math.max(0, Math.min(100, 100 - (rem / estimateTotal(phase)) * 100))
-    : (phase === 'done' ? 100 : 0);
-  const remStr = rem != null ? (phase==='done' ? 'Done' : formatRem(rem, phase)) : '--';
-
-  const elIdx   = document.getElementById('iv-idx');
-  const elOf    = document.getElementById('iv-of');
-  const elPhase = document.getElementById('iv-phase');
-  const elBar   = document.getElementById('iv-bar');
-  const elRem   = document.getElementById('iv-rem');
-  const elPace  = document.querySelector('[data-flip="iv-pace"] .val');
-  const elDist  = document.querySelector('[data-flip="iv-dist"] .val');
-  if (elIdx)   elIdx.textContent = idx;
-  if (elOf)    elOf.textContent  = 'of ' + total;
-  if (elPhase) { elPhase.textContent = phaseLabel; elPhase.style.color = phaseColor; }
-  if (elBar)   { elBar.style.width = pct + '%'; elBar.style.background = phaseColor; }
-  if (elRem)   elRem.textContent = remStr;
-  if (elPace)  elPace.textContent = _s.pace ?? '--';
-  if (elDist)  elDist.textContent = _s.distance_str ?? '--';
-}
-
 // ── Tap-to-flip helper ────────────────────────────────────────────────────────
 function bindFlipCards() {
   document.querySelectorAll('[data-flip]').forEach(el => {
     el.onclick = () => {
       const key = el.dataset.flip;
-      const len = parseInt(el.dataset.altlen) || 1;
-      _flip[key] = ((_flip[key] || 0) + 1) % len;
-      renderScreen();
+      const alts = JSON.parse(el.dataset.alts);
+      _flip[key] = ((_flip[key] || 0) + 1) % alts.length;
+      updateFlipCard(el, alts[_flip[key]]);
     };
   });
 }
-
-// ── Metric cell builder ───────────────────────────────────────────────────────
-// mc(key, alts, size) — size is a CSS class: 'g4' 'g2h' 'g2v' or '' (g1)
-function mc(key, alts, size='') {
+function flipVal(key, alts) {
   const i = _flip[key] || 0;
-  const a = alts[i];
-  const valCls = a.cls ? a.cls() : '';
-  return `<div class="mc${size?' '+size:''}" data-flip="${key}" data-altlen="${alts.length}">
-    <div class="lbl">${a.label}</div>
-    <div class="val${valCls?' '+valCls:''}">${a.value()??'--'}</div>
-  </div>`;
+  return alts[i];
+}
+function updateFlipCard(el, alt) {
+  el.querySelector('.lbl').textContent = alt.label;
+  el.querySelector('.val').textContent = alt.value()||'--';
 }
 
 // alt definitions keyed by slot name
-function paceClass() {
-  if (!_targetSec || !_s.pace_sec) return '';
-  return _s.pace_sec < _targetSec ? 'pace-fast' : 'pace-slow';
-}
-function alts_pace()  { return [
-  {label:'Pace',    value:()=>_s.pace??'--', cls:paceClass},
-  {label:'SPM',     value:()=>_s.spm??'--'},
-]; }
-function alts_dist()  { return [
-  {label:'Dist',    value:()=>_s.distance_str??'--'},
-  {label:'Strokes', value:()=>_s.stroke_count??0},
-]; }
-function alts_time()  { return [
-  {label:'Time',    value:()=>_s.elapsed_str??'--'},
-  {label:'Drag',    value:()=>_s.drag_factor??'--'},
-]; }
-function alts_spm()   { return [
-  {label:'SPM',     value:()=>_s.spm??'--'},
-  {label:'Stroke',  value:()=>_s.interval??'--'},
-]; }
-function alts_watts() { return [
-  {label:'Watts',   value:()=>_s.watts??0},
-  {label:'Avg N',   value:()=>fmtN(_s.avg_force_n)},
-]; }
-function alts_hr()    { return [
-  {label:'HR',      value:()=>_s.hr_bpm??'--'},
-  {label:'SPM',     value:()=>_s.spm??'--'},
-]; }
+function alts_pace()  { return [{label:'Pace', value:()=>_s.pace}, {label:'SPM', value:()=>_s.spm??'--'}]; }
+function alts_dist()  { return [{label:'Dist m', value:()=>_s.distance_str}, {label:'Strokes', value:()=>_s.stroke_count??0}]; }
+function alts_time()  { return [{label:'Time', value:()=>_s.elapsed_str}, {label:'Drag', value:()=>_s.drag_factor??'--'}]; }
+function alts_spm()   { return [{label:'SPM', value:()=>_s.spm??'--'}, {label:'Interval', value:()=>_s.interval??'--'}]; }
+function alts_watts() { return [{label:'Watts', value:()=>_s.watts??0}, {label:'Avg Force', value:()=>fmtN(_s.avg_force_n)}]; }
+function alts_hr()    { return [{label:'HR', value:()=>_s.hr_bpm??'--'}, {label:'Calories', value:()=>'--'}]; }
 
+function card(key, alts, extra='') {
+  const i = _flip[key] || 0;
+  const a = alts[i];
+  return `<div class="card${extra}" data-flip="${key}" data-alts='${JSON.stringify(alts)}'>
+    <div class="lbl">${a.label}</div>
+    <div class="val">${a.value()??'--'}</div>
+  </div>`;
+}
+function heroCard(key, alts, extraClass='') {
+  const i = _flip[key] || 0;
+  const a = alts[i];
+  return `<div class="hero-card ${extraClass}" data-flip="${key}" data-alts='${JSON.stringify(alts)}'>
+    <div class="lbl">${a.label}</div>
+    <div class="val">${a.value()??'--'}</div>
+  </div>`;
+}
 
 // ── Screen 0: Power ───────────────────────────────────────────────────────────
-// Layout: [Watts g4] [Pace g1][SPM g1] [Dist g1][Time g1]  (4+4=8 cells)
 function renderPower() {
-  return `<div class="grid8">
-    ${mc('h-watts', alts_watts(), 'g4')}
-    ${mc('p-pace',  alts_pace())}
-    ${mc('p-spm',   alts_spm())}
-    ${mc('p-dist',  alts_dist())}
-    ${mc('p-time',  alts_time())}
-  </div>`;
+  return `
+    ${heroCard('watts', alts_watts())}
+    <div class="metric-row cols3">
+      ${card('pace','p0',alts_pace())}
+      ${card('spm','p1',alts_spm())}
+      ${card('strokes','p2',[{label:'Strokes', value:()=>_s.stroke_count??0},{label:'SPM',value:()=>_s.spm??'--'}])}
+    </div>
+    <div class="metric-row cols2">
+      ${card('dist','p3',alts_dist())}
+      ${card('time','p4',alts_time())}
+    </div>`;
 }
 
 // ── Screen 1: Endurance ───────────────────────────────────────────────────────
@@ -717,34 +674,21 @@ function renderEndurance() {
     zoneColor = ZONE_COLORS[zone];
   }
   const zoneNames = ['Z1 Easy','Z2 Aerobic','Z3 Tempo','Z4 Threshold','Z5 Max'];
-  const hrAlts = alts_hr();
-  const hrFlip = _flip['h-hr'] || 0;
-  // Layout: [HR g4] [Pace][Dist] [Zone strip g2h]  (4+1+1+2=8 cells)
-  let heroHtml;
-  if (hrFlip === 0) {
-    const hrStyle = zoneColor ? `style="color:${zoneColor}"` : '';
-    heroHtml = `<div class="mc g4" data-flip="h-hr" data-altlen="${hrAlts.length}">
+  const hrStyle = zoneColor ? `style="color:${zoneColor}"` : '';
+  return `
+    <div class="hero-card hr-card" data-flip="hr" data-alts='${JSON.stringify(alts_hr())}'>
       <div class="lbl">HR</div>
-      <div class="val hr-color" ${hrStyle}>${hr??'--'}</div>
+      <div class="val" ${hrStyle}>${hr??'--'}</div>
       ${zone >= 0 ? `<div class="sub">${zoneNames[zone]}</div>` : ''}
-    </div>`;
-  } else {
-    heroHtml = mc('h-hr', hrAlts, 'g4');
-  }
-  const zoneBar = `<div class="mc g2h" style="padding:10px 12px;align-items:stretch;justify-content:center;gap:6px">
-    <div style="display:flex;height:18px;border-radius:6px;overflow:hidden">
-      ${ZONE_COLORS.map((c,i)=>
-        `<span style="flex:${i===zone?'2':'1'};background:${c};opacity:${i===zone?1:.35}"></span>`
-      ).join('')}
     </div>
-    ${zone>=0 ? `<div class="lbl">${zoneNames[zone]}</div>` : ''}
-  </div>`;
-  return `<div class="grid8">
-    ${heroHtml}
-    ${mc('e-pace', alts_pace())}
-    ${mc('e-dist', alts_dist())}
-    ${zoneBar}
-  </div>`;
+    <div id="zone-strip">${ZONE_COLORS.map((c,i)=>
+      `<span style="flex:${i===zone?'2':'1'};background:${c};opacity:${i===zone?1:.35}"></span>`
+    ).join('')}</div>
+    <div class="metric-row cols3">
+      ${card('e-pace','e0',alts_pace())}
+      ${card('e-dist','e1',alts_dist())}
+      ${card('e-time','e2',alts_time())}
+    </div>`;
 }
 
 // ── Screen 2: Technique ───────────────────────────────────────────────────────
@@ -766,7 +710,7 @@ function driveDelta() {
   const ex = _s.expected_drive_cm;
   if (!dl || !ex) return '--';
   const d = dl - ex;
-  return (d >= 0 ? '+' : '') + d + 'cm';
+  return (d >= 0 ? '+' : '') + (d / 100).toFixed(2) + 'm';
 }
 function deltaClass() {
   const dl = _s.drive_length_cm_raw;
@@ -786,38 +730,43 @@ function peakRatioClass() {
   const r = p/a;
   return r >= 1.3 && r <= 1.8 ? 'good' : r > 2.0 ? 'bad' : 'warn';
 }
-// Layout: 8 × g1 cells
 function renderTechnique() {
-  const t = (lbl, val, cls='') =>
-    `<div class="mc"><div class="lbl">${lbl}</div><div class="val${cls?' '+cls:''}">${val??'--'}</div></div>`;
-  return `<div class="grid8">
-    ${t('Drive',    _s.drive_time??'--')}
-    ${t('Recovery', _s.recovery??'--')}
-    ${t('Ratio',    driveRecoveryRatio(), ratioClass())}
-    ${t('Dr Length',_s.drive_length??'--')}
-    ${t('Expected', _s.expected_drive_cm?_s.expected_drive_cm+'cm':'--')}
-    ${t('Delta',    driveDelta(), deltaClass())}
-    ${t('Peak N',   fmtN(_s.peak_force_n))}
-    ${t('Peak/Avg', peakRatio(), peakRatioClass())}
-  </div>`;
+  return `
+    <div class="tech-grid">
+      <div class="tech-card"><div class="lbl">Drive</div><div class="val">${_s.drive_time??'--'}</div></div>
+      <div class="tech-card"><div class="lbl">Recovery</div><div class="val">${_s.recovery??'--'}</div></div>
+      <div class="tech-card"><div class="lbl">Ratio</div><div class="val ${ratioClass()}">${driveRecoveryRatio()}</div></div>
+    </div>
+    <div class="tech-grid">
+      <div class="tech-card"><div class="lbl">Drive Length</div><div class="val">${_s.drive_length??'--'}</div></div>
+      <div class="tech-card"><div class="lbl">Expected</div><div class="val">${_s.expected_drive_cm ? (_s.expected_drive_cm/100).toFixed(2)+'m':'--'}</div></div>
+      <div class="tech-card"><div class="lbl">Delta</div><div class="val ${deltaClass()}">${driveDelta()}</div></div>
+    </div>
+    <div class="tech-grid">
+      <div class="tech-card"><div class="lbl">Peak Force</div><div class="val">${fmtN(_s.peak_force_n)}</div></div>
+      <div class="tech-card"><div class="lbl">Avg Force</div><div class="val">${fmtN(_s.avg_force_n)}</div></div>
+      <div class="tech-card"><div class="lbl">Peak/Avg</div><div class="val ${peakRatioClass()}">${peakRatio()}</div></div>
+    </div>
+    <div class="metric-row cols2">
+      <div class="tech-card"><div class="lbl">Drag Factor</div><div class="val">${_s.drag_factor??'--'}</div></div>
+      <div class="tech-card"><div class="lbl">SPM</div><div class="val">${_s.spm??'--'}</div></div>
+    </div>`;
 }
 
 // ── Screen 3: Force Curve + Streak ────────────────────────────────────────────
-// Layout: [Canvas g4] [Streak g4]  (4+4=8 cells)
 function renderForceCurveHTML() {
   const streak = _s.perfect_streak ?? 0;
   const best   = _s.perfect_streak_best ?? 0;
-  return `<div class="grid8">
-    <div class="mc g4" style="align-items:stretch;padding:10px 10px 8px">
-      <div class="lbl" style="text-align:left;margin-bottom:6px">Drive Curve</div>
-      <canvas id="force-canvas" style="display:block;width:100%;flex:1;min-height:0"></canvas>
+  return `
+    <div id="force-wrap">
+      <div class="lbl" style="font-size:11px;color:var(--label);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px">Drive Curve</div>
+      <canvas id="force-canvas"></canvas>
     </div>
-    <div class="mc g4" style="gap:4px">
-      <div class="lbl">Perfect Streak</div>
-      <div id="fc-streak-num" style="font-size:clamp(48px,13vw,80px);font-weight:700;color:var(--green);line-height:1">${streak}</div>
-      <div id="fc-streak-best" class="lbl">best ${best}</div>
-    </div>
-  </div>`;
+    <div id="streak-wrap">
+      <div id="streak-num">${streak}</div>
+      <div id="streak-lbl">Perfect Stroke Streak</div>
+      <div id="streak-best">Best: ${best}</div>
+    </div>`;
 }
 function drawForce() {
   const canvas = document.getElementById('force-canvas');
@@ -911,45 +860,45 @@ function drawForce() {
 }
 
 // ── Screen 4: Intervals ───────────────────────────────────────────────────────
-// Layout: [Counter g4] [Progress g2h] [Pace][Dist]  (4+2+1+1=8 cells)
 function renderIntervals() {
-  const idx   = (_s.interval_index ?? 0) + 1;
-  const total = _s.interval_total  ?? 0;
-  const phase = _s.interval_phase  ?? 'work';
-  const rem   = _s.interval_remaining;
+  const idx      = (_s.interval_index ?? 0) + 1;
+  const total    = _s.interval_total  ?? 0;
+  const phase    = _s.interval_phase  ?? 'work';
+  const rem      = _s.interval_remaining;
+  const active   = _s.session_active;
 
   if (!total) {
-    return `<div class="grid8">
-      <div class="mc g8" style="color:var(--label);font-size:14px;line-height:1.6">
-        No workout selected.<br>Go to Workouts tab.
-      </div>
+    return `<div style="text-align:center;padding:40px 20px;color:var(--label)">
+      No workout selected.<br>Choose a workout from the Workouts tab.
     </div>`;
   }
 
   const remStr = rem != null
-    ? (phase === 'done' ? 'Done' : formatRem(rem, phase))
+    ? (phase === 'work' || phase === 'rest' ? formatRem(rem, phase) : 'Done')
     : '--';
+
   const pct = rem != null && rem > 0
     ? Math.max(0, Math.min(100, 100 - (rem / estimateTotal(phase)) * 100))
     : (phase === 'done' ? 100 : 0);
-  const phaseColor = phase==='work' ? 'var(--green)' : phase==='rest' ? 'var(--orange)' : 'var(--label)';
+
   const phaseLabel = phase === 'work' ? 'WORK' : phase === 'rest' ? 'REST' : 'DONE';
 
-  return `<div class="grid8">
-    <div class="mc g4" style="gap:4px">
-      <div id="iv-idx" style="font-size:clamp(48px,13vw,80px);font-weight:700;line-height:1">${idx}</div>
-      <div id="iv-of" class="lbl">of ${total}</div>
-      <div id="iv-phase" style="font-size:16px;font-weight:700;color:${phaseColor}">${phaseLabel}</div>
+  return `
+    <div id="iv-counter">
+      <div id="iv-num">${idx}</div>
+      <div id="iv-of">of ${total} intervals</div>
+      <div id="iv-phase" class="${phase}">${phaseLabel}</div>
     </div>
-    <div class="mc g2h" style="padding:10px 12px;gap:8px;align-items:stretch">
-      <div style="height:14px;border-radius:7px;background:#2a2b3a;overflow:hidden">
-        <div id="iv-bar" style="height:100%;width:${pct}%;background:${phaseColor};border-radius:7px;transition:width .5s"></div>
+    <div id="iv-progress-wrap">
+      <div id="iv-progress-bg">
+        <div id="iv-progress-bar" style="width:${pct}%;background:${phase==='rest'?'var(--orange)':'var(--green)'}"></div>
       </div>
-      <div id="iv-rem" style="font-size:clamp(28px,8vw,42px);font-weight:700;text-align:center">${remStr}</div>
+      <div id="iv-remaining">${remStr}</div>
     </div>
-    ${mc('iv-pace', alts_pace())}
-    ${mc('iv-dist', alts_dist())}
-  </div>`;
+    <div class="metric-row cols2">
+      ${card('iv-pace','ip0',alts_pace())}
+      ${card('iv-dist','ip1',alts_dist())}
+    </div>`;
 }
 function _updateIntervalsInPlace() {
   const idx   = (_s.interval_index ?? 0) + 1;
@@ -971,48 +920,41 @@ function _updateIntervalsInPlace() {
 }
 
 function formatRem(sec, phase) {
-  if (phase === 'work' && sec > 60) return `${sec}m`;
+  if (phase === 'work' && _s.active_workout_name) {
+    // If distance-based show metres remaining
+    const wid = _s.active_workout_id;
+    // sec is metres remaining for distance intervals, seconds for time
+    if (sec > 60) return `${sec}m`;
+  }
   return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
 }
-function estimateTotal(phase) { return 60; }
+function estimateTotal(phase) { return 60; }  // rough divisor for progress bar
 
 // ── BLE device selection ──────────────────────────────────────────────────────
 function updateBlePill(status, name, devices) {
   _bleDevices = devices || [];
   const dot = document.getElementById('ble-dot');
   const txt = document.getElementById('ble-text');
-  const cardDot = document.getElementById('ble-card-dot');
-  const cardTxt = document.getElementById('ble-card-text');
-
+  if (!dot) return;
+  dot.className = status;
   const labels = {
     scanning:    'Scanning…',
     found:       'Select Erg',
     connecting:  'Connecting…',
     connected:   name || 'Connected',
-    disconnected:'Reconnecting…',
+    disconnected:'Disconnected',
   };
-  const dotColors = {
-    scanning: 'var(--label)', found: 'var(--blue)', connecting: 'var(--yellow)',
-    connected: 'var(--green)', disconnected: 'var(--red)',
-  };
-  const label = labels[status] || status;
+  txt.textContent = labels[status] || status;
 
-  if (dot) { dot.className = status; }
-  if (txt) { txt.textContent = label; }
-  if (cardDot) {
-    cardDot.style.background = dotColors[status] || 'var(--label)';
-    cardDot.style.animation = status === 'connected' ? '' : 'blink 1.5s infinite';
-  }
-  if (cardTxt) { cardTxt.textContent = label; }
-
-  // Reset guard when connection resolves
   if (status === 'connected' || status === 'disconnected') _bleConnecting = false;
 
   if (status === 'found' && !_bleConnecting) {
+    // If we have a saved preference that matches a found device, auto-connect
     if (_bleAddress) {
       const match = _bleDevices.find(d => d.address === _bleAddress);
       if (match) { _bleConnecting = true; selectErg(match.address, match.name); return; }
     }
+    // Otherwise show the picker
     openErgPicker();
   }
 }
@@ -1126,6 +1068,13 @@ async function dismissResume() {
 }
 
 // ── Target pace ───────────────────────────────────────────────────────────────
+function toggleSessionPanel() {
+  document.getElementById('session-panel').classList.toggle('open');
+}
+function closeSessionPanel() {
+  document.getElementById('session-panel').classList.remove('open');
+}
+
 function openTargetModal() {
   if (_targetSec) {
     document.getElementById('tgt-min').value = Math.floor(_targetSec/60);
@@ -1360,91 +1309,6 @@ async function setPlan(day) {
 }
 
 // ── Profile ───────────────────────────────────────────────────────────────────
-// ── WiFi ─────────────────────────────────────────────────────────────────────
-let _wifiJoinSsid = '';
-let _wifiJoinSecured = false;
-
-async function loadWifi() {
-  try {
-    const s = await fetch('/api/wifi/status').then(r=>r.json());
-    document.getElementById('wifi-dot').style.background = s.connected ? '#30d158' : 'var(--label)';
-    document.getElementById('wifi-status-txt').textContent = s.connected ? s.ssid : 'Not connected';
-  } catch(e) {
-    document.getElementById('wifi-status-txt').textContent = 'Unavailable';
-  }
-}
-
-async function wifiScan() {
-  const list = document.getElementById('wifi-scan-list');
-  document.getElementById('wifi-msg').textContent = '';
-  list.innerHTML = '<div style="color:var(--label);font-size:13px;padding:6px 0">Scanning…</div>';
-  try {
-    const nets = await fetch('/api/wifi/scan').then(r=>r.json());
-    if (!nets.length) {
-      list.innerHTML = '<div style="color:var(--label);font-size:13px;padding:6px 0">No networks found.</div>';
-      return;
-    }
-    list.innerHTML = nets.map(n => {
-      const ssidSafe = n.ssid.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
-      return `<div onclick="wifiSelect('${ssidSafe}',${n.secured})"
-        style="padding:10px 12px;background:#111118;border-radius:8px;margin-bottom:6px;
-               display:flex;align-items:center;justify-content:space-between;cursor:pointer">
-        <span style="font-size:15px;font-weight:500">${n.ssid}</span>
-        <span style="font-size:12px;color:var(--label)">${n.signal}%${n.secured?' 🔒':''}</span>
-      </div>`;
-    }).join('');
-  } catch(e) {
-    list.innerHTML = '<div style="color:#ff453a;font-size:13px">Scan failed.</div>';
-  }
-}
-
-function wifiSelect(ssid, secured) {
-  _wifiJoinSsid = ssid;
-  _wifiJoinSecured = secured;
-  document.getElementById('wifi-join-label').textContent =
-    secured ? `Password for "${ssid}"` : `Join "${ssid}" (open network)`;
-  const pwd = document.getElementById('wifi-pwd');
-  pwd.style.display = secured ? '' : 'none';
-  pwd.value = '';
-  document.getElementById('wifi-join-wrap').style.display = '';
-  document.getElementById('wifi-msg').textContent = '';
-}
-
-function wifiJoinCancel() {
-  document.getElementById('wifi-join-wrap').style.display = 'none';
-  _wifiJoinSsid = '';
-}
-
-async function wifiJoinConfirm() {
-  const msg = document.getElementById('wifi-msg');
-  const pwd = document.getElementById('wifi-pwd').value;
-  if (_wifiJoinSecured && !pwd) { msg.textContent = 'Password required.'; return; }
-  msg.style.color = 'var(--label)';
-  msg.textContent = 'Connecting…';
-  const body = { ssid: _wifiJoinSsid };
-  if (_wifiJoinSecured && pwd) body.password = pwd;
-  try {
-    const r = await fetch('/api/wifi/connect', {
-      method: 'POST',
-      headers: {'Content-Type':'application/json'},
-      body: JSON.stringify(body)
-    }).then(r=>r.json());
-    if (r.ok) {
-      msg.style.color = '#30d158';
-      msg.textContent = `Connected to ${_wifiJoinSsid}`;
-      document.getElementById('wifi-join-wrap').style.display = 'none';
-      document.getElementById('wifi-scan-list').innerHTML = '';
-      loadWifi();
-    } else {
-      msg.style.color = '#ff453a';
-      msg.textContent = r.error || 'Connection failed.';
-    }
-  } catch(e) {
-    msg.style.color = '#ff453a';
-    msg.textContent = 'Request failed.';
-  }
-}
-
 async function loadProfile() {
   const p=await fetch('/api/profile').then(r=>r.json());
   if(p.name)      document.getElementById('p-name').value=p.name;

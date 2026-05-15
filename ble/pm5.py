@@ -224,16 +224,15 @@ def load_user_profile():
     try:
         with sqlite3.connect(_DB_PATH) as conn:
             row = conn.execute(
-                "SELECT id, name, weight_kg, height_cm, dob "
+                "SELECT id, name, weight_kg, height_cm "
                 "FROM user_profile ORDER BY id DESC LIMIT 1"
             ).fetchone()
         if row:
-            uid, name, weight_kg, height_cm, dob = row
+            uid, name, weight_kg, height_cm = row
             state["user_id"]         = uid
             state["user_name"]       = name or ""
             state["user_weight_kg"]  = weight_kg
             state["user_height_cm"]  = height_cm
-            state["user_dob"]        = dob  # ISO date string or None
             state["expected_drive_cm"] = round(height_cm * 0.50)
             state["expected_peak_n"]   = round(weight_kg * 4.5)
     except Exception:
@@ -320,7 +319,7 @@ def parse_stroke_data(data):
 
     state["drive_time"]        = f"{drive_time_secs:.2f}s"
     state["recovery"]          = f"{recovery_secs:.2f}s"
-    state["drive_length"]      = f"{drive_length_cm}cm"
+    state["drive_length"]      = f"{drive_length_cm / 100:.2f}m"
     state["stroke_count"]      = stroke_count
     state["peak_force_n"]      = peak_force_n
     state["avg_force_n"]       = avg_force_n

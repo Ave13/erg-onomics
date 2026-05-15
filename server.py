@@ -509,21 +509,26 @@ def _nmcli(*args, timeout=15):
 @app.get("/api/wifi/status")
 def api_wifi_status():
     try:
-        out = _nmcli("-t", "-f",
-                     "GENERAL.CONNECTION,IP4.ADDRESS[1],GENERAL.STATE",
-                     "dev", "show", _WLAN, timeout=5).stdout
-        info = {}
+        out = _nmcli("-t", "-f", "NAME,TYPE,STATE", "con", "show", "--active", timeout=5).stdout
         for line in out.splitlines():
-            k, _, v = line.partition(":")
-            info[k.strip()] = v.strip()
-        connection = info.get("GENERAL.CONNECTION", "")
-        ip = info.get("IP4.ADDRESS[1]", "").split("/")[0]
-        return {
-            "connection": connection,
-            "ip": ip,
-            "ap_mode": connection == "ErgRower",
-            "interface": _WLAN,
-        }
+            parts = line.split(":")
+            if len(parts) < 2:
+                continue
+            name, con_type = parts[0], parts[1]
+            if "wireless" not in con_type:
+                continue
+            ip = ""
+            try:
+                dev_out = _nmcli("-t", "-f", "IP4.ADDRESS", "con", "show", name, timeout=3).stdout
+                for dl in dev_out.splitlines():
+                    if dl.startswith("IP4.ADDRESS"):
+                        ip = dl.split(":")[-1].split("/")[0]
+                        break
+            except Exception:
+                pass
+            return {"connection": name, "ip": ip,
+                    "ap_mode": name == "ErgRower", "interface": _WLAN}
+        return {"connection": "", "ip": "", "ap_mode": False, "interface": _WLAN}
     except Exception:
         return {"connection": "", "ip": "", "ap_mode": False, "interface": _WLAN}
 
@@ -651,73 +656,3 @@ class ProfileBody(BaseModel):
 def api_save_profile(body: ProfileBody):
     uid = save_user_profile(body.name.strip(), body.weight_kg, body.height_cm, body.dob)
     return {"id": uid}
-
-
-# ── WiFi ──────────────────────────────────────────────────────────────────────
-
-@app.get("/api/wifi/status")
-def api_wifi_status():
-    try:
-        out = subprocess.check_output(
-            ["nmcli", "-t", "-f", "NAME,TYPE,STATE", "connection", "show", "--active"],
-            stderr=subprocess.DEVNULL, timeout=5
-        ).decode().strip()
-        for line in out.splitlines():
-            parts = line.split(":")
-            if len(parts) >= 3 and "wireless" in parts[1]:
-                return {"connected": True, "ssid": parts[0]}
-    except Exception:
-        pass
-    return {"connected": False, "ssid": None}
-
-
-@app.get("/api/wifi/scan")
-def api_wifi_scan():
-    try:
-        out = subprocess.check_output(
-            ["nmcli", "-t", "-f", "SSID,SIGNAL,SECURITY", "dev", "wifi", "list"],
-            stderr=subprocess.DEVNULL, timeout=15
-        ).decode().strip()
-        networks = []
-        seen: set = set()
-        for line in out.splitlines():
-            parts = line.split(":")
-            if len(parts) >= 2:
-                ssid   = parts[0].strip()
-                signal = parts[1].strip() if len(parts) > 1 else "0"
-                sec    = ":".join(parts[2:]).strip() if len(parts) > 2 else ""
-                if ssid and ssid not in seen:
-                    seen.add(ssid)
-                    networks.append({
-                        "ssid":    ssid,
-                        "signal":  int(signal) if signal.isdigit() else 0,
-                        "secured": bool(sec and sec != "--"),
-                    })
-        networks.sort(key=lambda x: -x["signal"])
-        return networks
-    except subprocess.TimeoutExpired:
-        raise HTTPException(504, "Scan timed out")
-    except Exception as e:
-        raise HTTPException(500, str(e))
-
-
-class WifiConnectBody(BaseModel):
-    ssid: str
-    password: str | None = None
-
-@app.post("/api/wifi/connect")
-def api_wifi_connect(body: WifiConnectBody):
-    # nmcli dev wifi connect handles key-mgmt automatically
-    cmd = ["nmcli", "dev", "wifi", "connect", body.ssid]
-    if body.password:
-        cmd += ["password", body.password]
-    try:
-        result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
-        if result.returncode != 0:
-            err = result.stderr.strip() or result.stdout.strip()
-            return {"ok": False, "error": err}
-        return {"ok": True}
-    except subprocess.TimeoutExpired:
-        return {"ok": False, "error": "Connection timed out"}
-    except Exception as e:
-        return {"ok": False, "error": str(e)}
