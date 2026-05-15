@@ -9,8 +9,8 @@
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 :root {
-  --bg:#111118; --card:#1e1f2a; --label:#737aaa; --value:#f2f2f8;
-  --green:#26da72; --red:#ff5940; --hr-red:#f25757; --blue:#2e8cd9;
+  --bg:#0d0d14; --card:#1a1b27; --label:#737aaa; --value:#f2f2f8;
+  --green:#2ECC71; --red:#E74C3C; --hr-red:#f25757; --blue:#2e8cd9;
   --orange:#f27320; --yellow:#e6c21a; --btn-h:64px;
 }
 html,body { height:100%; background:var(--bg); color:var(--value);
@@ -33,60 +33,94 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 #status { font-size:13px; color:var(--label); }
 #status .recording { color:var(--green); font-weight:700; }
 #status .paused    { color:var(--blue);  font-weight:700; }
-#screen-dots { display:flex; gap:6px; }
+#screen-dots { display:flex; gap:6px; align-items:center; }
 #screen-dots span { width:7px; height:7px; border-radius:50%;
                     background:#2a2b3a; transition:background .2s; }
-#screen-dots span.active { background:var(--blue); }
+#screen-dots span.active { background:var(--blue); width:9px; height:9px;
+                            box-shadow:0 0 6px rgba(46,140,217,.6); }
 #screen-label { font-size:12px; color:var(--label); text-align:center; margin-bottom:6px; }
 
 /* ── Swipeable screen area — hosts the grid8 ── */
 #screen-wrap { flex:1; touch-action:pan-y; min-height:0; display:flex; flex-direction:column; }
 
-/* ── 8-cell grid system ── */
-/* 2 col × 4 row = 8 equal cells; cells span to fill 1/2/4/8 slots */
-.grid8 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  grid-template-rows: repeat(4, 1fr);
-  gap: 6px;
-  flex: 1;
-  min-height: 0;
-}
-/* Metric cell */
-.mc {
-  background: var(--card);
-  border-radius: 12px;
-  padding: 8px 6px 6px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
-  overflow: hidden;
-  text-align: center;
-  min-height: 0;
-}
-.mc .lbl { font-size: 10px; color: var(--label); text-transform: uppercase;
-           letter-spacing: .07em; flex-shrink: 0; }
-.mc .val { font-size: clamp(20px, 5.5vw, 30px); font-weight: 700;
-           line-height: 1.1; flex-shrink: 0; }
-.mc .sub { font-size: 10px; color: var(--label); margin-top: 2px; flex-shrink: 0; }
-/* Span modifiers */
-.g2h { grid-column: span 2; }            /* full-width strip */
-.g2v { grid-row: span 2; }              /* tall half-width */
-.g4  { grid-column: span 2; grid-row: span 2; }  /* half-screen hero */
-.g8  { grid-column: span 2; grid-row: span 4; }  /* full-screen */
-/* Font scaling for larger cells */
-.g4 .val { font-size: clamp(52px, 14vw, 88px); }
-.g2v .val { font-size: clamp(30px, 8vw, 46px); }
-.g2h .val { font-size: clamp(26px, 7vw, 38px); }
-/* Colour states */
-.val.good  { color: var(--green); }
-.val.warn  { color: var(--yellow); }
-.val.bad   { color: var(--red); }
-.val.hr-color { color: var(--hr-red); }
-.val.pace-fast { color: var(--green); }
-.val.pace-slow { color: var(--red); }
+/* ── Hero metric (large centre value) ── */
+.hero-card { background:var(--card); border-radius:14px; padding:14px 10px 10px;
+             text-align:center; margin-bottom:8px; cursor:pointer;
+             box-shadow:0 2px 12px rgba(0,0,0,.45);
+             border-top:1px solid rgba(255,255,255,.05); }
+.hero-card .lbl { font-size:12px; color:var(--label); text-transform:uppercase;
+                  letter-spacing:.08em; }
+.hero-card .val { font-size:clamp(52px,14vw,90px); font-weight:700; line-height:1.05; }
+.hero-card.pace-green .val { color:var(--green); }
+.hero-card.pace-red   .val { color:var(--red); }
+.hero-card.hr-card    .val { color:var(--hr-red); }
+.hero-card:active { transform:scale(.98); transition:transform 80ms; }
+
+/* ── Secondary metric grid ── */
+.metric-row { display:grid; gap:7px; margin-bottom:7px; }
+.metric-row.cols2 { grid-template-columns:1fr 1fr; }
+.metric-row.cols3 { grid-template-columns:1fr 1fr 1fr; }
+.card { background:var(--card); border-radius:12px; padding:10px 6px 8px;
+        text-align:center; cursor:pointer;
+        box-shadow:0 2px 12px rgba(0,0,0,.45);
+        border-top:1px solid rgba(255,255,255,.05); }
+.card .lbl { font-size:11px; color:var(--label); text-transform:uppercase;
+             letter-spacing:.07em; }
+.card .val { font-size:clamp(22px,6vw,34px); font-weight:700; line-height:1.15; }
+.card .sub { font-size:11px; color:var(--label); margin-top:2px; }
+.card:active { transform:scale(.97); transition:transform 80ms; }
+.card-glow-green { box-shadow:0 0 18px rgba(46,204,113,.14), 0 2px 12px rgba(0,0,0,.45); }
+.card-glow-red   { box-shadow:0 0 18px rgba(231,76,60,.14),  0 2px 12px rgba(0,0,0,.45); }
+
+/* ── Zone strip (endurance screen) ── */
+#zone-strip { display:flex; height:14px; border-radius:4px; overflow:hidden; margin:6px 0; }
+#zone-strip span { flex:0 0 0%; height:100%; transition:flex .4s; }
+
+/* ── Technique screen ── */
+.tech-grid { display:grid; grid-template-columns:1fr 1fr 1fr; gap:7px; margin-bottom:7px; }
+.tech-card { background:var(--card); border-radius:10px; padding:10px 6px 8px; text-align:center;
+             box-shadow:0 2px 8px rgba(0,0,0,.4);
+             border-top:1px solid rgba(255,255,255,.04); }
+.tech-card .lbl { font-size:10px; color:var(--label); text-transform:uppercase; }
+.tech-card .val { font-size:clamp(18px,5vw,28px); font-weight:700; }
+.tech-card .val.good  { color:var(--green); }
+.tech-card .val.warn  { color:var(--yellow); }
+.tech-card .val.bad   { color:var(--red); }
+.tech-card:active { transform:scale(.97); transition:transform 80ms; }
+
+/* ── Force curve screen ── */
+#force-wrap { background:var(--card); border-radius:14px; padding:12px; margin-bottom:8px;
+              box-shadow:0 2px 12px rgba(0,0,0,.45);
+              border-top:1px solid rgba(255,255,255,.05); }
+#force-canvas { width:100%; height:160px; display:block; }
+#streak-wrap { background:var(--card); border-radius:12px; padding:14px;
+               text-align:center; margin-bottom:8px;
+               box-shadow:0 2px 12px rgba(0,0,0,.45);
+               border-top:1px solid rgba(255,255,255,.05); }
+#streak-num  { font-size:clamp(42px,12vw,72px); font-weight:700; color:var(--green); }
+#streak-lbl  { font-size:13px; color:var(--label); margin-top:2px; }
+#streak-best { font-size:12px; color:var(--label); margin-top:4px; }
+
+/* ── Intervals screen ── */
+#iv-counter { background:var(--card); border-radius:14px; padding:16px 10px;
+              text-align:center; margin-bottom:8px;
+              box-shadow:0 2px 12px rgba(0,0,0,.45);
+              border-top:1px solid rgba(255,255,255,.05); }
+#iv-num  { font-size:clamp(48px,13vw,80px); font-weight:700; line-height:1; }
+#iv-of   { font-size:16px; color:var(--label); margin-top:4px; }
+#iv-phase { font-size:18px; font-weight:700; margin-top:6px; }
+#iv-phase.work { color:var(--green); }
+#iv-phase.rest { color:var(--orange); }
+#iv-phase.done { color:var(--label); }
+#iv-progress-wrap { background:var(--card); border-radius:12px;
+                    padding:12px; margin-bottom:8px; overflow:hidden;
+                    box-shadow:0 2px 12px rgba(0,0,0,.45);
+                    border-top:1px solid rgba(255,255,255,.05); }
+#iv-progress-bar { height:12px; border-radius:6px; background:var(--green);
+                   transition:width .5s; width:0%; }
+#iv-progress-bg  { height:12px; border-radius:6px; background:#2a2b3a; }
+#iv-remaining { font-size:clamp(32px,9vw,56px); font-weight:700;
+                text-align:center; margin-top:8px; }
 
 /* ── Target pace bar ── */
 #target-bar { display:none; background:#2a2a1e; border-left:4px solid var(--yellow);
@@ -169,6 +203,25 @@ canvas.chart { width:100% !important; }
 #ble-dot.connected   { background:var(--green); }
 #ble-dot.disconnected{ background:var(--red); }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
+@keyframes row-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.35)} }
+#ble-dot.rowing { animation:row-pulse .8s ease-in-out infinite !important; }
+
+/* ── Video analysis screen ── */
+#video-container { position:relative; width:100%; border-radius:14px; overflow:hidden;
+                   background:#000; aspect-ratio:4/3; margin-bottom:10px;
+                   box-shadow:0 2px 12px rgba(0,0,0,.45); flex-shrink:0; }
+#pose-video  { width:100%; height:100%; object-fit:cover; display:block; }
+#pose-canvas { position:absolute; top:0; left:0; width:100%; height:100%; z-index:2; }
+#pose-status { position:absolute; inset:0; display:flex; align-items:center;
+               justify-content:center; background:rgba(0,0,0,.6);
+               color:var(--label); font-size:14px; z-index:3; }
+.angle-pills { display:flex; gap:8px; margin-bottom:8px; justify-content:center; flex-shrink:0; }
+.angle-pill { background:var(--card); border-radius:20px; padding:7px 16px;
+              font-size:14px; font-weight:600;
+              box-shadow:0 2px 8px rgba(0,0,0,.4);
+              border-top:1px solid rgba(255,255,255,.05); text-align:center; }
+.angle-pill .pill-lbl { font-size:10px; color:var(--label); text-transform:uppercase;
+                         display:block; letter-spacing:.07em; margin-bottom:2px; }
 
 /* ── Erg picker bottom sheet ── */
 #erg-overlay { display:none; position:fixed; inset:0; background:rgba(0,0,0,.75);
@@ -184,6 +237,20 @@ canvas.chart { width:100% !important; }
 .erg-row-name { font-size:15px; font-weight:600; }
 .erg-row-addr { font-size:12px; color:var(--label); margin-top:2px; }
 .erg-check { color:var(--green); font-size:18px; flex-shrink:0; }
+
+/* ── WiFi scan list ── */
+.wifi-net { display:flex; align-items:center; justify-content:space-between;
+            background:var(--card); border-radius:10px; padding:11px 13px;
+            margin-bottom:7px; cursor:pointer; }
+.wifi-net:active { opacity:.7; }
+.wifi-net-name { font-size:14px; font-weight:600; }
+.wifi-net-sig  { font-size:12px; color:var(--label); margin-top:2px; }
+.wifi-net-lock { font-size:16px; color:var(--label); flex-shrink:0; margin-left:8px; }
+.wifi-saved    { display:flex; align-items:center; justify-content:space-between;
+                 background:var(--card); border-radius:10px; padding:10px 13px;
+                 margin-bottom:7px; font-size:13px; }
+.wifi-saved .name { font-weight:600; }
+.wifi-saved .connected { color:var(--green); font-size:12px; }
 
 /* ── Workouts / Plan / Profile ── */
 .wk-row { display:flex; align-items:center; justify-content:space-between;
@@ -369,6 +436,32 @@ button.sm:active { opacity:.75; }
   <div class="form-row"><label>Date of Birth (optional)</label><input id="p-dob" type="date"></div>
   <button class="btn btn-start" style="height:54px;font-size:17px;margin-bottom:16px" onclick="saveProfile()">Save Profile</button>
   <div id="p-msg"></div>
+
+  <!-- WiFi -->
+  <h3>WiFi</h3>
+  <div id="wifi-status-bar" style="background:var(--card);border-radius:10px;padding:11px 13px;
+       margin-bottom:10px;font-size:13px;display:flex;align-items:center;gap:8px;">
+    <span id="wifi-dot" style="width:9px;height:9px;border-radius:50%;background:var(--label);flex-shrink:0"></span>
+    <span id="wifi-status-txt">Checking…</span>
+  </div>
+  <div id="wifi-saved-wrap"></div>
+  <button class="btn btn-neutral" style="height:50px;font-size:15px;margin-bottom:6px"
+          onclick="wifiScan()">Scan for Networks</button>
+  <div id="wifi-scan-list"></div>
+  <!-- password entry (hidden until a secured network is tapped) -->
+  <div id="wifi-join-wrap" style="display:none">
+    <div class="form-row" style="margin-top:8px">
+      <label id="wifi-join-label">Password for …</label>
+      <input id="wifi-pwd" type="password" placeholder="WiFi password" autocomplete="off"
+             style="width:100%;height:46px;background:#111118;color:var(--value);
+                    border:1px solid #2a2b3a;border-radius:8px;padding:0 12px;font-size:16px">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button class="btn btn-neutral" style="height:46px" onclick="wifiJoinCancel()">Cancel</button>
+      <button class="btn btn-start"   style="height:46px" onclick="wifiJoinConfirm()">Join</button>
+    </div>
+  </div>
+  <div id="wifi-msg" style="font-size:13px;min-height:18px;margin-top:6px"></div>
 </div>
 
 <!-- ══ TARGET PACE MODAL ════════════════════════════════════════════════════ -->
@@ -398,7 +491,7 @@ button.sm:active { opacity:.75; }
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 // ── Constants ────────────────────────────────────────────────────────────────
-const SCREENS = ['Power','Endurance','Technique','Force Curve','Intervals'];
+const SCREENS = ['Power','Endurance','Technique','Force Curve','Intervals','Video'];
 const ZONE_COLORS = ['#4d8cd8','#33bf72','#f2bf19','#f27219','#e53333'];
 const TANAKA_MAX_HR = (dob) => {
   if (!dob) return 185;
@@ -412,16 +505,27 @@ let _active = false, _paused = false;
 let _resumeId = null;
 let _targetSec = null;
 let _screen = parseInt(localStorage.getItem('screen') || '0');
-let _lastScreen = -1;   // tracks which screen's HTML is currently in the DOM
+let _lastScreen = -1;    // stable DOM: -1 forces rebuild on first render
 let _paceChart = null, _forceChart = null;
 let _touchStartX = 0;
+let _userDob = null;
 // Tap-to-flip: which alternate is showing for each slot
 const _flip = {};
 // BLE
 let _bleDevices = [];
 let _bleAddress = localStorage.getItem('bleAddress') || null;
-let _bleConnecting = false;   // prevents repeated selectErg() calls each tick
-let _userDob = null;          // ISO date string from profile, for HR zone calc
+let _bleConnecting = false;
+// Video / pose
+let _cameraStream = null;
+let _poseDetector = null;
+let _tfLoaded = false;
+let _ghostOn = false;
+let _ghostLandmarks = null;
+let _bestGhostWatts = 0;
+let _lastPoseLandmarks = null;
+let _angleCache = {catch:'--', layback:'--', ratio:'--'};
+let _lastStrokeStateForAngle = -1;
+let _initCameraRunning = false;
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function nav(page) {
@@ -433,8 +537,7 @@ function nav(page) {
   if (page === 'history')  loadHistory();
   if (page === 'workouts') { loadWorkouts(); renderIntervalForm(); }
   if (page === 'plan')     loadPlan();
-  if (page === 'profile')  loadWifi();
-  if (page === 'profile')  loadProfile();
+  if (page === 'profile')  { loadProfile(); loadWifi(); }
 }
 
 // ── Screen dots ───────────────────────────────────────────────────────────────
@@ -456,7 +559,7 @@ document.getElementById('screen-wrap').addEventListener('touchend', e => {
   if (dx < 0 && _screen < SCREENS.length - 1) _screen++;
   else if (dx > 0 && _screen > 0)             _screen--;
   localStorage.setItem('screen', _screen);
-  _lastScreen = -1;  // force full rebuild on screen change
+  _lastScreen = -1;   // force rebuild on arrival at new screen
   renderDots();
   renderScreen();
 }, {passive:true});
@@ -467,26 +570,36 @@ function renderScreen() {
   const changed = _screen !== _lastScreen;
   _lastScreen = _screen;
 
+  // Screen 3 — Force Curve: stable canvas DOM
   if (_screen === 3) {
-    // Force curve: only rebuild DOM when first arriving; update in-place each tick
     if (changed) { w.innerHTML = renderForceCurveHTML(); bindFlipCards(); }
     else {
-      const sn = document.getElementById('fc-streak-num');
-      const sb = document.getElementById('fc-streak-best');
+      const sn = document.getElementById('streak-num');
+      const sb = document.getElementById('streak-best');
       if (sn) sn.textContent = _s.perfect_streak ?? 0;
-      if (sb) sb.textContent = 'best ' + (_s.perfect_streak_best ?? 0);
+      if (sb) sb.textContent = 'Best: ' + (_s.perfect_streak_best ?? 0);
     }
     requestAnimationFrame(drawForce);
     return;
   }
 
+  // Screen 4 — Intervals: stable DOM for progress bar transition
   if (_screen === 4) {
-    // Intervals: rebuild on arrival, then update in-place to keep bar transition alive
     if (changed) { w.innerHTML = renderIntervals(); bindFlipCards(); }
     else _updateIntervalsInPlace();
     return;
   }
 
+  // Screen 5 — Video: stable camera + canvas DOM
+  if (_screen === 5) {
+    if (changed) { w.innerHTML = renderVideoHTML(); initCamera(); }
+    else _updateAnglePills();
+    requestAnimationFrame(drawSkeleton);
+    return;
+  }
+
+  // Screens 0-2: rebuild each tick (no stateful elements)
+  if (!changed) return;
   if (_screen === 0) w.innerHTML = renderPower();
   else if (_screen === 1) w.innerHTML = renderEndurance();
   else if (_screen === 2) w.innerHTML = renderTechnique();
@@ -710,59 +823,89 @@ function drawForce() {
   const canvas = document.getElementById('force-canvas');
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
-  const W = Math.round(rect.width);
-  const H = Math.round(rect.height);
-  if (W < 10 || H < 10) { requestAnimationFrame(drawForce); return; }
+  const W = Math.round(rect.width) || canvas.offsetWidth || 300;
+  const H = 160;
+  if (W < 10) { requestAnimationFrame(drawForce); return; }
   canvas.width  = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, H);
 
-  const peak   = _s.peak_force_n  || 0;
-  const avg    = _s.avg_force_n   || 0;
-  const expPk  = _s.expected_peak_n || 200;
-  const maxY   = Math.max(peak, expPk, 50) * 1.15;
-  const pad    = {l:8, r:8, t:10, b:10};
+  const peak  = _s.peak_force_n   || 0;
+  const avg   = _s.avg_force_n    || 0;
+  const expPk = _s.expected_peak_n || 200;
+  const maxY  = Math.max(peak, expPk, 50) * 1.15;
+  const pad   = {l:8, r:8, t:10, b:10};
   const cW = W - pad.l - pad.r;
   const cH = H - pad.t - pad.b;
 
   function yPx(n) { return pad.t + cH - (n / maxY) * cH; }
-  function xPx(t) { return pad.l + t * cW; }        // t in [0,1] = drive progress
+  function xPx(t) { return pad.l + t * cW; }
 
-  // Draw a smooth approximated curve using cubic bezier
-  // Ideal: peak at t=0.33
-  function drawCurve(pkN, color) {
-    if (pkN <= 0) return;
-    ctx.beginPath();
-    ctx.moveTo(xPx(0), yPx(0));
-    ctx.bezierCurveTo(
-      xPx(0.15), yPx(pkN * 0.6),   // control 1
-      xPx(0.28), yPx(pkN * 1.0),   // control 2
-      xPx(0.33), yPx(pkN)          // peak point
-    );
-    ctx.bezierCurveTo(
-      xPx(0.45), yPx(pkN * 0.8),
-      xPx(0.70), yPx(avg * 0.9),
-      xPx(1.0),  yPx(0)
-    );
-    ctx.strokeStyle = color;
-    ctx.lineWidth   = 2.5;
-    ctx.stroke();
+  function makePath(pkN, avgN) {
+    const p = new Path2D();
+    p.moveTo(xPx(0), yPx(0));
+    p.bezierCurveTo(xPx(0.15), yPx(pkN * 0.6), xPx(0.28), yPx(pkN), xPx(0.33), yPx(pkN));
+    p.bezierCurveTo(xPx(0.45), yPx(pkN * 0.8), xPx(0.70), yPx(avgN * 0.9), xPx(1.0), yPx(0));
+    return p;
   }
 
-  // Ideal reference curve (grey)
-  drawCurve(expPk, '#3a3b4a');
+  // Reference curve — dashed grey
+  if (expPk > 0) {
+    const refAvg = expPk * 0.65;
+    const ref = makePath(expPk, refAvg);
+    ctx.save();
+    ctx.setLineDash([4, 5]);
+    ctx.strokeStyle = '#3a3b4a';
+    ctx.lineWidth   = 2;
+    ctx.stroke(ref);
+    // faint fill
+    const refFill = makePath(expPk, refAvg);
+    refFill.lineTo(xPx(1.0), H);
+    refFill.lineTo(xPx(0),   H);
+    refFill.closePath();
+    ctx.fillStyle = '#3a3b4a18';
+    ctx.fill(refFill);
+    ctx.restore();
+  }
 
   // Actual curve — coloured by quality
-  const ratio = avg > 0 ? peak / avg : 0;
-  const color = ratio >= 1.3 && ratio <= 1.8 ? '#26da72'
-              : ratio > 2.0                   ? '#ff5940'
-              : '#f27219';
-  drawCurve(peak, color);
+  if (peak > 0 && avg > 0) {
+    const ratio = peak / avg;
+    const color = ratio >= 1.3 && ratio <= 1.8 ? '#2ECC71'
+                : ratio > 2.0                   ? '#E74C3C'
+                : '#f27219';
 
-  // Force labels
+    const actual = makePath(peak, avg);
+
+    // Area fill with gradient
+    const grad = ctx.createLinearGradient(0, yPx(peak), 0, H);
+    grad.addColorStop(0, color + '44');
+    grad.addColorStop(1, color + '00');
+    const fillPath = makePath(peak, avg);
+    fillPath.lineTo(xPx(1.0), H);
+    fillPath.lineTo(xPx(0),   H);
+    fillPath.closePath();
+    ctx.fillStyle = grad;
+    ctx.fill(fillPath);
+
+    // Stroke
+    ctx.setLineDash([]);
+    ctx.strokeStyle = color;
+    ctx.lineWidth   = 3.5;
+    ctx.stroke(actual);
+
+    // Peak dot
+    ctx.beginPath();
+    ctx.arc(xPx(0.33), yPx(peak), 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = color;
+    ctx.fill();
+  }
+
+  // Labels
   ctx.fillStyle = '#737aaa';
   ctx.font      = '11px -apple-system,sans-serif';
+  ctx.setLineDash([]);
   ctx.fillText(`${Math.round(peak)}N peak`, pad.l + 2, pad.t + 12);
   ctx.fillText(`${Math.round(avg)}N avg`,   pad.l + 2, pad.t + 26);
 }
@@ -808,6 +951,25 @@ function renderIntervals() {
     ${mc('iv-dist', alts_dist())}
   </div>`;
 }
+function _updateIntervalsInPlace() {
+  const idx   = (_s.interval_index ?? 0) + 1;
+  const total = _s.interval_total ?? 0;
+  const phase = _s.interval_phase ?? 'work';
+  const rem   = _s.interval_remaining;
+  const pct   = rem != null && rem > 0
+    ? Math.max(0, Math.min(100, 100 - (rem / estimateTotal(phase)) * 100))
+    : (phase === 'done' ? 100 : 0);
+  const remStr = rem != null ? (phase !== 'done' ? formatRem(rem, phase) : 'Done') : '--';
+  const phaseLabel = phase === 'work' ? 'WORK' : phase === 'rest' ? 'REST' : 'DONE';
+  const barColor = phase === 'rest' ? 'var(--orange)' : 'var(--green)';
+  const n = document.getElementById('iv-num');    if (n) n.textContent = idx;
+  const o = document.getElementById('iv-of');     if (o) o.textContent = `of ${total} intervals`;
+  const p = document.getElementById('iv-phase');  if (p) { p.textContent = phaseLabel; p.className = phase; }
+  const b = document.getElementById('iv-progress-bar');
+  if (b) { b.style.width = `${pct}%`; b.style.background = barColor; }
+  const r = document.getElementById('iv-remaining'); if (r) r.textContent = remStr;
+}
+
 function formatRem(sec, phase) {
   if (phase === 'work' && sec > 60) return `${sec}m`;
   return `${Math.floor(sec/60)}:${String(sec%60).padStart(2,'0')}`;
@@ -913,6 +1075,9 @@ async function tick() {
 
     // BLE status pill
     updateBlePill(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
+    // Pulse BLE dot during drive phase
+    const bleDot = document.getElementById('ble-dot');
+    if (bleDot) bleDot.classList.toggle('rowing', _active && _s.stroke_state === 1);
 
     // Re-render current screen
     renderScreen();
@@ -1302,6 +1467,362 @@ async function saveProfile() {
     body:JSON.stringify({name,weight_kg:wt,height_cm:ht,dob})});
   msg.textContent='Saved.';
   setTimeout(()=>msg.textContent='',2000);
+}
+
+// ── WiFi management ───────────────────────────────────────────────────────────
+let _wifiJoinSsid = '';
+let _wifiJoinSecured = false;
+
+async function loadWifi() {
+  try {
+    const s = await fetch('/api/wifi/status').then(r => r.json());
+    const dot = document.getElementById('wifi-dot');
+    const txt = document.getElementById('wifi-status-txt');
+    if (s.ap_mode) {
+      dot.style.background = 'var(--yellow)';
+      txt.textContent = 'Hotspot active (ErgRower) — connect to this WiFi to add networks';
+    } else if (s.connection) {
+      dot.style.background = 'var(--green)';
+      txt.textContent = `Connected: ${s.connection}  ${s.ip ? '· ' + s.ip : ''}`;
+    } else {
+      dot.style.background = 'var(--red)';
+      txt.textContent = 'Not connected';
+    }
+    await loadWifiSaved();
+  } catch(e) {}
+}
+
+async function loadWifiSaved() {
+  try {
+    const { networks } = await fetch('/api/wifi/saved').then(r => r.json());
+    const wrap = document.getElementById('wifi-saved-wrap');
+    if (!networks.length) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = '<h3 style="margin-top:0">Saved Networks</h3>' +
+      networks.map(n => `
+        <div class="wifi-saved">
+          <div>
+            <div class="name">${n.ssid}</div>
+            ${n.connected ? '<div class="connected">● Connected</div>' : ''}
+          </div>
+          <button class="sm" onclick="wifiForget('${n.ssid.replace(/'/g,"\\'")}')">Forget</button>
+        </div>`).join('');
+  } catch(e) {}
+}
+
+async function wifiScan() {
+  const list = document.getElementById('wifi-scan-list');
+  const msg  = document.getElementById('wifi-msg');
+  list.innerHTML = '<p style="color:var(--label);font-size:13px;padding:8px 0">Scanning…</p>';
+  msg.textContent = '';
+  try {
+    const { networks } = await fetch('/api/wifi/scan').then(r => r.json());
+    if (!networks.length) {
+      list.innerHTML = '<p style="color:var(--label);font-size:13px">No networks found.</p>';
+      return;
+    }
+    list.innerHTML = '<h3 style="margin-top:8px">Available Networks</h3>' +
+      networks.map(n => {
+        const bars = n.signal > 70 ? '▂▄▆█' : n.signal > 40 ? '▂▄▆' : n.signal > 20 ? '▂▄' : '▂';
+        const lock = n.security && n.security !== '--' ? '🔒' : '';
+        return `<div class="wifi-net" onclick="wifiNetTap('${n.ssid.replace(/'/g,"\\'")}','${n.security||''}')">
+          <div>
+            <div class="wifi-net-name">${n.ssid}</div>
+            <div class="wifi-net-sig">${bars} ${n.signal}%  ${n.security||'Open'}</div>
+          </div>
+          <span class="wifi-net-lock">${lock}</span>
+        </div>`;
+      }).join('');
+  } catch(e) {
+    list.innerHTML = '<p style="color:var(--red);font-size:13px">Scan failed.</p>';
+  }
+}
+
+function wifiNetTap(ssid, security) {
+  const secured = security && security !== '--' && security !== '';
+  _wifiJoinSsid    = ssid;
+  _wifiJoinSecured = secured;
+  document.getElementById('wifi-msg').textContent = '';
+  if (secured) {
+    document.getElementById('wifi-join-label').textContent = `Password for "${ssid}"`;
+    document.getElementById('wifi-pwd').value = '';
+    document.getElementById('wifi-join-wrap').style.display = 'block';
+    document.getElementById('wifi-pwd').focus();
+  } else {
+    wifiConnect(ssid, '');
+  }
+}
+
+function wifiJoinCancel() {
+  document.getElementById('wifi-join-wrap').style.display = 'none';
+}
+
+function wifiJoinConfirm() {
+  const pwd = document.getElementById('wifi-pwd').value;
+  document.getElementById('wifi-join-wrap').style.display = 'none';
+  wifiConnect(_wifiJoinSsid, pwd);
+}
+
+async function wifiConnect(ssid, password) {
+  const msg = document.getElementById('wifi-msg');
+  msg.style.color = 'var(--label)';
+  msg.textContent = `Connecting to "${ssid}"…`;
+  try {
+    const res = await fetch('/api/wifi/connect', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({ssid, password}),
+    }).then(r => r.json());
+    if (res.ok) {
+      msg.style.color = 'var(--green)';
+      msg.textContent = `Connected to "${ssid}"`;
+      document.getElementById('wifi-scan-list').innerHTML = '';
+      await loadWifi();
+    } else {
+      msg.style.color = 'var(--red)';
+      msg.textContent = res.message || 'Connection failed';
+    }
+  } catch(e) {
+    msg.style.color = 'var(--red)';
+    msg.textContent = 'Request failed';
+  }
+}
+
+async function wifiForget(ssid) {
+  const msg = document.getElementById('wifi-msg');
+  await fetch('/api/wifi/forget', {
+    method: 'POST',
+    headers: {'Content-Type':'application/json'},
+    body: JSON.stringify({ssid}),
+  });
+  msg.style.color = 'var(--label)';
+  msg.textContent = `Forgot "${ssid}"`;
+  await loadWifi();
+}
+
+// ── Screen 5: Video Analysis ──────────────────────────────────────────────────
+function renderVideoHTML() {
+  return `
+    <div id="video-container">
+      <video id="pose-video" autoplay muted playsinline
+             style="width:100%;height:100%;object-fit:cover;display:block"></video>
+      <canvas id="pose-canvas"
+              style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2"></canvas>
+      <div id="pose-status">Starting camera…</div>
+    </div>
+    <div class="angle-pills">
+      <div class="angle-pill">
+        <span class="pill-lbl">Catch</span>
+        <span id="ap-catch">${_angleCache.catch}</span>
+      </div>
+      <div class="angle-pill">
+        <span class="pill-lbl">Layback</span>
+        <span id="ap-layback">${_angleCache.layback}</span>
+      </div>
+      <div class="angle-pill">
+        <span class="pill-lbl">Dr:Rec</span>
+        <span id="ap-ratio">${_angleCache.ratio}</span>
+      </div>
+    </div>
+    <button class="btn btn-neutral" id="ghost-toggle" onclick="toggleGhost()"
+            style="margin-bottom:6px">
+      Ghost ${_ghostOn ? 'On ●' : 'Off'}
+    </button>`;
+}
+
+function _updateAnglePills() {
+  const ac = document.getElementById('ap-catch');
+  const al = document.getElementById('ap-layback');
+  const ar = document.getElementById('ap-ratio');
+  if (ac) ac.textContent = _angleCache.catch;
+  if (al) al.textContent = _angleCache.layback;
+  if (ar) ar.textContent = _angleCache.ratio;
+  // Capture angles on stroke state transitions
+  if (_s.stroke_state !== _lastStrokeStateForAngle && _lastPoseLandmarks) {
+    const st = _s.stroke_state;
+    if (st === 1 && _lastStrokeStateForAngle !== 1) {  // drive start = catch
+      const angle = trunkAngle(_lastPoseLandmarks);
+      if (angle !== null) _angleCache.catch = angle + '°';
+    }
+    if (st === 2 && _lastStrokeStateForAngle === 1) {  // decel = layback
+      const angle = trunkAngle(_lastPoseLandmarks);
+      if (angle !== null) {
+        _angleCache.layback = angle + '°';
+        // Update ghost if this was a best-watts stroke
+        const w = _s.watts || 0;
+        if (w > _bestGhostWatts && _lastPoseLandmarks) {
+          _bestGhostWatts = w;
+          _ghostLandmarks = _lastPoseLandmarks.slice();
+        }
+      }
+    }
+    _lastStrokeStateForAngle = _s.stroke_state;
+  }
+  // Drive:recovery ratio from state
+  if (_s.drive_time_secs && _s.recovery_secs && _s.recovery_secs > 0) {
+    _angleCache.ratio = '1:' + (_s.recovery_secs / _s.drive_time_secs).toFixed(1);
+    if (ar) ar.textContent = _angleCache.ratio;
+  }
+}
+
+function trunkAngle(lm) {
+  // Angle of mid-shoulder to mid-hip line from vertical (degrees forward lean)
+  const ls = lm[5], rs = lm[6], lh = lm[11], rh = lm[12];
+  if (!ls || !rs || !lh || !rh) return null;
+  const sx = (ls.x + rs.x) / 2, sy = (ls.y + rs.y) / 2;
+  const hx = (lh.x + rh.x) / 2, hy = (lh.y + rh.y) / 2;
+  const dx = sx - hx, dy = sy - hy;  // vector from hip to shoulder
+  const angle = Math.atan2(dx, -dy) * 180 / Math.PI;  // 0° = vertical
+  return Math.round(Math.abs(angle));
+}
+
+function angleBetween(a, b, c) {
+  // Angle at joint b (a-b-c) in degrees, using normalised landmark coords
+  const ab = [a.x - b.x, a.y - b.y];
+  const cb = [c.x - b.x, c.y - b.y];
+  const dot = ab[0]*cb[0] + ab[1]*cb[1];
+  const mag = Math.hypot(...ab) * Math.hypot(...cb);
+  if (mag === 0) return null;
+  return Math.round(Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180 / Math.PI);
+}
+
+async function initCamera() {
+  if (_initCameraRunning) return;
+  _initCameraRunning = true;
+  const statusEl = () => document.getElementById('pose-status');
+  try {
+    if (!_cameraStream || !_cameraStream.active) {
+      _cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width:{ideal:640}, height:{ideal:480} },
+        audio: false,
+      });
+    }
+    const vid = document.getElementById('pose-video');
+    if (vid) {
+      vid.srcObject = _cameraStream;
+      await vid.play().catch(()=>{});
+    }
+    if (statusEl()) statusEl().style.display = 'none';
+    await loadPoseDetector();
+  } catch(e) {
+    if (statusEl()) statusEl().textContent = 'Camera unavailable: ' + e.message;
+  }
+  _initCameraRunning = false;
+}
+
+async function loadPoseDetector() {
+  if (_poseDetector) return;
+  if (_tfLoaded) return;
+  // Lazy-load TF.js + MoveNet only when video screen is opened
+  await new Promise((resolve, reject) => {
+    const s1 = document.createElement('script');
+    s1.src = 'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js';
+    s1.onerror = reject;
+    s1.onload = () => {
+      const s2 = document.createElement('script');
+      s2.src = 'https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.1.3/dist/pose-detection.min.js';
+      s2.onerror = reject;
+      s2.onload = resolve;
+      document.head.appendChild(s2);
+    };
+    document.head.appendChild(s1);
+  });
+  _tfLoaded = true;
+  if (window.poseDetection) {
+    _poseDetector = await poseDetection.createDetector(
+      poseDetection.SupportedModels.MoveNet,
+      { modelType: poseDetection.movenet.modelType.SINGLEPOSE_LIGHTNING }
+    );
+  }
+}
+
+async function drawSkeleton() {
+  const canvas = document.getElementById('pose-canvas');
+  const video  = document.getElementById('pose-video');
+  if (!canvas || !video || video.readyState < 2) {
+    requestAnimationFrame(drawSkeleton);
+    return;
+  }
+  const rect = canvas.getBoundingClientRect();
+  const W = Math.round(rect.width) || 640;
+  const H = Math.round(rect.height) || 480;
+  if (W < 10) { requestAnimationFrame(drawSkeleton); return; }
+  canvas.width  = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, W, H);
+
+  // Run pose detection if detector is ready
+  if (_poseDetector) {
+    try {
+      const poses = await _poseDetector.estimatePoses(video);
+      if (poses.length) {
+        const kp = poses[0].keypoints;
+        // Normalise to canvas coords
+        const lm = kp.map(k => ({
+          x: k.x / video.videoWidth  * W,
+          y: k.y / video.videoHeight * H,
+          score: k.score,
+        }));
+        _lastPoseLandmarks = kp.map(k => ({  // keep normalised [0-1] for angle calc
+          x: k.x / video.videoWidth,
+          y: k.y / video.videoHeight,
+          score: k.score,
+        }));
+
+        // Ghost skeleton
+        if (_ghostOn && _ghostLandmarks) {
+          drawSkeletonLines(ctx, _ghostLandmarks.map(k => ({
+            x: k.x * W, y: k.y * H, score: k.score,
+          })), 'rgba(46,140,217,0.35)', 2);
+        }
+        // Live skeleton
+        drawSkeletonLines(ctx, lm, 'rgba(46,204,113,0.85)', 2.5);
+        drawJoints(ctx, lm, '#2ECC71');
+      }
+    } catch(e) {}
+  }
+
+  if (_screen === 5) requestAnimationFrame(drawSkeleton);
+}
+
+// MoveNet COCO skeleton connections (pairs of keypoint indices)
+const _POSE_CONNECTIONS = [
+  [5,6],[5,7],[7,9],[6,8],[8,10],  // arms
+  [5,11],[6,12],[11,12],            // torso
+  [11,13],[13,15],[12,14],[14,16],  // legs
+  [0,5],[0,6],                      // head to shoulders
+];
+
+function drawSkeletonLines(ctx, lm, color, lw) {
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = lw;
+  ctx.lineCap     = 'round';
+  for (const [a, b] of _POSE_CONNECTIONS) {
+    if (!lm[a] || !lm[b]) continue;
+    if ((lm[a].score || 0) < 0.3 || (lm[b].score || 0) < 0.3) continue;
+    ctx.beginPath();
+    ctx.moveTo(lm[a].x, lm[a].y);
+    ctx.lineTo(lm[b].x, lm[b].y);
+    ctx.stroke();
+  }
+}
+
+function drawJoints(ctx, lm, color) {
+  const KEY_JOINTS = new Set([5,6,7,8,9,10,11,12,13,14]);  // arms + torso + legs
+  for (let i = 0; i < lm.length; i++) {
+    if (!lm[i] || (lm[i].score || 0) < 0.3) continue;
+    const r = KEY_JOINTS.has(i) ? 5 : 3;
+    ctx.beginPath();
+    ctx.arc(lm[i].x, lm[i].y, r, 0, Math.PI * 2);
+    ctx.fillStyle = KEY_JOINTS.has(i) ? color : '#fff';
+    ctx.fill();
+  }
+}
+
+function toggleGhost() {
+  _ghostOn = !_ghostOn;
+  const btn = document.getElementById('ghost-toggle');
+  if (btn) btn.textContent = 'Ghost ' + (_ghostOn ? 'On ●' : 'Off');
 }
 
 // Initial render
