@@ -11,7 +11,7 @@
 :root {
   --bg:#0d0d14; --card:#1a1b27; --label:#737aaa; --value:#f2f2f8;
   --green:#2ECC71; --red:#E74C3C; --hr-red:#f25757; --blue:#2e8cd9;
-  --orange:#f27320; --yellow:#e6c21a; --btn-h:64px;
+  --orange:#f27320; --yellow:#e6c21a;
 }
 html,body { height:100%; background:var(--bg); color:var(--value);
             font-family:-apple-system,sans-serif; overflow:hidden; }
@@ -129,10 +129,13 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 #target-bar.hidden { display:none !important; }
 
 /* ── Session buttons ── */
-#controls { display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px; }
-#controls2 { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:4px; }
-button.btn { height:var(--btn-h); border:none; border-radius:10px;
-             font-size:18px; font-weight:700; cursor:pointer; width:100%; }
+#controls { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
+            margin-top:6px; flex-shrink:0; }
+#controls2 { display:grid; grid-template-columns:1fr 1fr; gap:6px;
+             margin-top:6px; flex-shrink:0;
+             padding-bottom: max(8px, env(safe-area-inset-bottom)); }
+button.btn { height:48px; border:none; border-radius:10px;
+             font-size:16px; font-weight:700; cursor:pointer; width:100%; }
 button.btn:active { opacity:.75; }
 button.btn:disabled { opacity:.35; cursor:default; }
 .btn-start   { background:#26b870; color:#fff; }
