@@ -739,7 +739,7 @@ function renderTechnique() {
     </div>
     <div class="tech-grid">
       <div class="tech-card"><div class="lbl">Drive Length</div><div class="val">${_s.drive_length??'--'}</div></div>
-      <div class="tech-card"><div class="lbl">Expected</div><div class="val">${_s.expected_drive_cm ? _s.expected_drive_cm+'cm':'--'}</div></div>
+      <div class="tech-card"><div class="lbl">Expected</div><div class="val">${_s.expected_drive_cm ? (_s.expected_drive_cm/100).toFixed(2)+'m':'--'}</div></div>
       <div class="tech-card"><div class="lbl">Delta</div><div class="val ${deltaClass()}">${driveDelta()}</div></div>
     </div>
     <div class="tech-grid">
