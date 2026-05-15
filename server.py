@@ -70,12 +70,28 @@ threading.Thread(target=_audio_loop, daemon=True, name="audio").start()
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 
+def _git_version():
+    try:
+        import subprocess as _sp
+        h = _sp.check_output(["git","rev-parse","--short","HEAD"], stderr=_sp.DEVNULL).decode().strip()
+        d = _sp.check_output(["git","log","-1","--format=%ci"], stderr=_sp.DEVNULL).decode().strip()[:16]
+        return f"{h} {d}"
+    except Exception:
+        return "unknown"
+
+_VERSION = _git_version()
+
 @app.get("/")
 def index():
     return FileResponse(
         "static/index.html",
-        headers={"Cache-Control": "no-store, no-cache, must-revalidate"}
+        headers={"Cache-Control": "no-store, no-cache, must-revalidate",
+                 "X-App-Version": _VERSION}
     )
+
+@app.get("/api/version")
+def api_version():
+    return {"version": _VERSION}
 
 
 # ── Live state ────────────────────────────────────────────────────────────────
