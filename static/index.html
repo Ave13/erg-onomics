@@ -131,10 +131,14 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 /* ── Session buttons ── */
 #controls { display:grid; grid-template-columns:1fr 1fr 1fr; gap:6px;
             margin-top:6px; flex-shrink:0; }
-#controls2 { display:grid; grid-template-columns:1fr 1fr; gap:6px;
-             margin-top:6px; flex-shrink:0;
-             padding-bottom: max(8px, env(safe-area-inset-bottom)); }
-button.btn { height:48px; border:none; border-radius:10px;
+#controls2 { display:flex; gap:6px; margin-top:4px; flex-shrink:0;
+             padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+#controls2.hidden { display:none; }
+#controls2 button { flex:1; height:34px; border:none; border-radius:8px;
+                    font-size:13px; font-weight:600; cursor:pointer;
+                    background:#2a2b3a; color:var(--label); }
+#controls2 button:active { opacity:.75; }
+button.btn { height:52px; border:none; border-radius:10px;
              font-size:16px; font-weight:700; cursor:pointer; width:100%; }
 button.btn:active { opacity:.75; }
 button.btn:disabled { opacity:.35; cursor:default; }
@@ -979,6 +983,8 @@ async function tick() {
     if (bs) bs.disabled = _active;
     if (bp) { bp.disabled = !_active; bp.textContent = _paused ? 'Resume' : 'Pause'; }
     if (be) be.disabled = !_active;
+    const c2 = document.getElementById('controls2');
+    if (c2) c2.classList.toggle('hidden', _active);
 
     // BLE status pill
     updateBlePill(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
