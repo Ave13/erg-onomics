@@ -25,6 +25,7 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 /* ── Page shell ── */
 #shell { display:flex; flex-direction:column; height:100vh; height:100dvh; }
 .page { display:none; flex:1; overflow-y:auto; padding:10px; min-height:0; }
+.page.active { display:flex; flex-direction:column; }
 
 /* ── Row page: CSS grid so screen-wrap always gets leftover space ── */
 #page-row.active {
