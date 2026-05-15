@@ -25,7 +25,7 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 /* ── Page shell ── */
 #shell { display:flex; flex-direction:column; height:100vh; height:100dvh; }
 .page { display:none; flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:10px; min-height:0; }
-.page.active { display:flex; flex-direction:column; overflow-y:auto; -webkit-overflow-scrolling:touch; }
+.page.active { display:block; overflow-y:auto; -webkit-overflow-scrolling:touch; }
 
 /* ── Row page: CSS grid so screen-wrap always gets leftover space ── */
 #page-row.active {
@@ -1008,9 +1008,9 @@ async function tick() {
     const bs = document.getElementById('btn-start');
     const bp = document.getElementById('btn-pause');
     const be = document.getElementById('btn-end');
-    if (bs) bs.disabled = _active;
-    if (bp) { bp.disabled = !_active; bp.textContent = _paused ? 'Resume' : 'Pause'; }
-    if (be) be.disabled = !_active;
+    if (bs) bs.style.display = _active ? 'none' : '';
+    if (bp) { bp.style.display = _active ? '' : 'none'; bp.textContent = _paused ? 'Resume' : 'Pause'; }
+    if (be) be.style.display = _active ? '' : 'none';
 
     // BLE status pill
     updateBlePill(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
