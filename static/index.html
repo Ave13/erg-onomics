@@ -106,7 +106,7 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 #force-wrap { background:var(--card); border-radius:14px; padding:12px; margin-bottom:8px;
               box-shadow:0 2px 12px rgba(0,0,0,.45);
               border-top:1px solid rgba(255,255,255,.05); }
-#force-canvas { width:100%; height:160px; display:block; }
+#force-canvas { width:100%; height:200px; display:block; }
 #streak-wrap { background:var(--card); border-radius:12px; padding:14px;
                text-align:center; margin-bottom:8px;
                box-shadow:0 2px 12px rgba(0,0,0,.45);
@@ -827,90 +827,175 @@ function drawForce() {
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
   const W = Math.round(rect.width) || canvas.offsetWidth || 300;
-  const H = 160;
+  const H = 200;
   if (W < 10) { requestAnimationFrame(drawForce); return; }
   canvas.width  = W;
   canvas.height = H;
   const ctx = canvas.getContext('2d');
   ctx.clearRect(0, 0, W, H);
 
-  const peak  = _s.peak_force_n   || 0;
-  const avg   = _s.avg_force_n    || 0;
-  const expPk = _s.expected_peak_n || 200;
-  const maxY  = Math.max(peak, expPk, 50) * 1.15;
-  const pad   = {l:8, r:8, t:10, b:10};
-  const cW = W - pad.l - pad.r;
-  const cH = H - pad.t - pad.b;
+  const peak  = _s.peak_force_n    || 0;
+  const avg   = _s.avg_force_n     || 0;
+  const expPk = _s.expected_peak_n || 220;
+  const maxN  = Math.max(peak, expPk, 80) * 1.22;
 
-  function yPx(n) { return pad.t + cH - (n / maxY) * cH; }
-  function xPx(t) { return pad.l + t * cW; }
+  const pad = { l:10, r:10, t:16, b:22 };
+  const cW  = W - pad.l - pad.r;
+  const cH  = H - pad.t - pad.b;
+  const yN  = n => pad.t + cH * (1 - n / maxN);
+  const xT  = t => pad.l + t * cW;
 
-  function makePath(pkN, avgN) {
+  // ── Curve generation ────────────────────────────────────────────────────────
+  // Generate N (x,y) pixel points from a normalised shape function [0-1].
+  function genCurve(shapeFn, peakForce, nPts) {
+    nPts = nPts || 80;
+    const raw = [];
+    for (let i = 0; i < nPts; i++) raw.push(shapeFn(i / (nPts - 1)));
+    const mx = Math.max(...raw) || 1;
+    return raw.map((v, i) => ({ x: xT(i / (nPts - 1)), y: yN(v / mx * peakForce) }));
+  }
+
+  // Catmull-Rom smooth path through point array.
+  function curvePath(pts, closed) {
     const p = new Path2D();
-    p.moveTo(xPx(0), yPx(0));
-    p.bezierCurveTo(xPx(0.15), yPx(pkN * 0.6), xPx(0.28), yPx(pkN), xPx(0.33), yPx(pkN));
-    p.bezierCurveTo(xPx(0.45), yPx(pkN * 0.8), xPx(0.70), yPx(avgN * 0.9), xPx(1.0), yPx(0));
+    p.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[Math.max(0, i - 2)], b = pts[i - 1],
+            c = pts[i], d = pts[Math.min(pts.length - 1, i + 1)];
+      p.bezierCurveTo(
+        b.x + (c.x - a.x) / 6, b.y + (c.y - a.y) / 6,
+        c.x - (d.x - b.x) / 6, c.y - (d.y - b.y) / 6,
+        c.x, c.y
+      );
+    }
+    if (closed) {
+      p.lineTo(pts[pts.length - 1].x, yN(0));
+      p.lineTo(pts[0].x, yN(0));
+      p.closePath();
+    }
     return p;
   }
 
-  // Reference curve — dashed grey
-  if (expPk > 0) {
-    const refAvg = expPk * 0.65;
-    const ref = makePath(expPk, refAvg);
-    ctx.save();
-    ctx.setLineDash([4, 5]);
-    ctx.strokeStyle = '#3a3b4a';
-    ctx.lineWidth   = 2;
-    ctx.stroke(ref);
-    // faint fill
-    const refFill = makePath(expPk, refAvg);
-    refFill.lineTo(xPx(1.0), H);
-    refFill.lineTo(xPx(0),   H);
-    refFill.closePath();
-    ctx.fillStyle = '#3a3b4a18';
-    ctx.fill(refFill);
-    ctx.restore();
+  // ── Shape functions ─────────────────────────────────────────────────────────
+  // "Ideal" textbook stroke: clean build, broad peak at ~38%, sustained,
+  // gradual finish.  Represents what a well-coached rower should produce.
+  function idealShape(t) {
+    if (t < 0.08) return (t / 0.08) * 0.42;
+    if (t < 0.38) return 0.42 + 0.58 * Math.pow((t - 0.08) / 0.30, 1.3);
+    if (t < 0.58) return 1.0  - 0.10 * ((t - 0.38) / 0.20);
+    return Math.max(0, 0.90 * (1 - Math.pow((t - 0.58) / 0.42, 1.2)));
   }
 
-  // Actual curve — coloured by quality
-  if (peak > 0 && avg > 0) {
-    const ratio = peak / avg;
-    const color = ratio >= 1.3 && ratio <= 1.8 ? '#2ECC71'
-                : ratio > 2.0                   ? '#E74C3C'
-                : '#f27219';
+  // Actual stroke shape parameterised by avg/peak ratio.
+  // Higher ratio (more square) → force stays elevated through drive.
+  // Lower  ratio (spiky)       → force drops quickly after peak.
+  function actualShape(t, ratio) {
+    const peakT = 0.35;
+    if (t <= peakT) return Math.pow(t / peakT, 1.5);
+    const tFall = (t - peakT) / (1 - peakT);
+    // exp < 1 → convex (slow initial drop = square)
+    // exp → 1 → linear (moderate)
+    // exp > 1 → concave (fast initial drop = spiky) — clamped below
+    const exp = Math.max(0.15, 1.0 - ratio);
+    return Math.max(0, Math.pow(1 - tFall, exp));
+  }
 
-    const actual = makePath(peak, avg);
+  // ── Ideal outline ───────────────────────────────────────────────────────────
+  if (expPk > 0) {
+    const ipts = genCurve(idealShape, expPk);
 
-    // Area fill with gradient
-    const grad = ctx.createLinearGradient(0, yPx(peak), 0, H);
-    grad.addColorStop(0, color + '44');
-    grad.addColorStop(1, color + '00');
-    const fillPath = makePath(peak, avg);
-    fillPath.lineTo(xPx(1.0), H);
-    fillPath.lineTo(xPx(0),   H);
-    fillPath.closePath();
+    // Ghost fill
+    ctx.fillStyle = 'rgba(255,255,255,0.035)';
+    ctx.fill(curvePath(ipts, true));
+
+    // Dashed outline
+    ctx.save();
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = 'rgba(155,162,220,0.55)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke(curvePath(ipts));
+    ctx.restore();
+
+    // Ideal peak label at the peak position (t≈0.38)
+    ctx.fillStyle = 'rgba(155,162,220,0.6)';
+    ctx.font = '10px -apple-system,sans-serif';
+    ctx.fillText('Ideal  ' + Math.round(expPk) + 'N', xT(0.40), yN(expPk) - 4);
+  }
+
+  // ── Actual drive curve ──────────────────────────────────────────────────────
+  if (peak > 20 && avg > 0) {
+    const ratio  = avg / peak;           // shape parameter (0–1)
+    const pkAvg  = peak / avg;           // quality metric
+    const color  = pkAvg >= 1.3 && pkAvg <= 1.8 ? '#2ECC71'
+                 : pkAvg > 2.2                   ? '#E74C3C'
+                 : '#F39C12';
+
+    const apts = genCurve(t => actualShape(t, ratio), peak);
+
+    // Gradient fill
+    const grad = ctx.createLinearGradient(0, yN(peak), 0, yN(0));
+    grad.addColorStop(0,   color + '55');
+    grad.addColorStop(0.6, color + '1A');
+    grad.addColorStop(1,   color + '00');
     ctx.fillStyle = grad;
-    ctx.fill(fillPath);
+    ctx.fill(curvePath(apts, true));
 
-    // Stroke
+    // Curve stroke
     ctx.setLineDash([]);
     ctx.strokeStyle = color;
-    ctx.lineWidth   = 3.5;
-    ctx.stroke(actual);
+    ctx.lineWidth   = 2.5;
+    ctx.stroke(curvePath(apts));
+
+    // Avg force dashed horizontal
+    ctx.save();
+    ctx.setLineDash([3, 4]);
+    ctx.strokeStyle = color + 'AA';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.moveTo(xT(0), yN(avg));
+    ctx.lineTo(xT(1), yN(avg));
+    ctx.stroke();
+    ctx.restore();
 
     // Peak dot
+    const pi  = Math.round(0.35 * (apts.length - 1));
+    const ppt = apts[pi];
     ctx.beginPath();
-    ctx.arc(xPx(0.33), yPx(peak), 4.5, 0, Math.PI * 2);
+    ctx.arc(ppt.x, ppt.y, 4, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
+
+    // Labels
+    ctx.font      = 'bold 12px -apple-system,sans-serif';
+    ctx.fillStyle = color;
+    ctx.fillText(Math.round(peak) + 'N', pad.l + 2, pad.t + 13);
+    ctx.font      = '10px -apple-system,sans-serif';
+    ctx.fillStyle = color + 'BB';
+    ctx.fillText('avg ' + Math.round(avg) + 'N', pad.l + 2, yN(avg) - 4);
+  } else {
+    ctx.fillStyle = 'rgba(100,110,160,0.35)';
+    ctx.font      = '13px -apple-system,sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Row to see force curve', W / 2, H / 2);
+    ctx.textAlign = 'left';
   }
 
-  // Labels
-  ctx.fillStyle = '#737aaa';
-  ctx.font      = '11px -apple-system,sans-serif';
+  // ── Baseline + axis labels ──────────────────────────────────────────────────
   ctx.setLineDash([]);
-  ctx.fillText(`${Math.round(peak)}N peak`, pad.l + 2, pad.t + 12);
-  ctx.fillText(`${Math.round(avg)}N avg`,   pad.l + 2, pad.t + 26);
+  ctx.strokeStyle = 'rgba(70,75,105,0.5)';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(xT(0), yN(0));
+  ctx.lineTo(xT(1), yN(0));
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(110,115,160,0.55)';
+  ctx.font      = '9px -apple-system,sans-serif';
+  ctx.textAlign = 'left';
+  ctx.fillText('Catch', xT(0), H - 5);
+  ctx.textAlign = 'right';
+  ctx.fillText('Finish', xT(1), H - 5);
+  ctx.textAlign = 'left';
 }
 
 // ── Screen 4: Intervals ───────────────────────────────────────────────────────
