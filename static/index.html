@@ -229,6 +229,7 @@ canvas.chart { width:100% !important; }
 #ble-dot.connecting  { background:var(--yellow); animation:blink .8s  infinite; }
 #ble-dot.connected   { background:var(--green); }
 #ble-dot.disconnected{ background:var(--red); }
+#ble-dot.demo        { background:var(--yellow) !important; animation:none !important; }
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.35} }
 @keyframes row-pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.6;transform:scale(1.35)} }
 #ble-dot.rowing { animation:row-pulse .8s ease-in-out infinite !important; }
@@ -366,11 +367,13 @@ button.sm:active { opacity:.75; }
     <button class="btn btn-pause"  id="btn-pause" onclick="doPause();closeSessionPanel()" disabled>Pause</button>
     <button class="btn btn-end"    id="btn-end"   onclick="doEnd();closeSessionPanel()"   disabled>End</button>
   </div>
-  <div class="btn-row">
+  <div class="btn-row" style="margin-bottom:8px">
     <button class="btn btn-neutral" onclick="openTargetModal();closeSessionPanel()">Target Pace</button>
     <button class="btn btn-neutral" onclick="nav('workouts');closeSessionPanel()">Workout</button>
     <button class="btn btn-neutral" onclick="closeSessionPanel()">Close</button>
   </div>
+  <button id="btn-demo" class="btn btn-neutral" style="width:100%;height:44px;font-size:14px;color:var(--yellow)"
+          onclick="toggleDemo()">Demo Mode</button>
 </div>
 
 <!-- ══ HISTORY PAGE ══════════════════════════════════════════════════════════ -->
@@ -1091,11 +1094,16 @@ async function tick() {
     if (bp) { bp.style.display = _active ? '' : 'none'; bp.textContent = _paused ? 'Resume' : 'Pause'; }
     if (be) be.style.display = _active ? '' : 'none';
 
+    // Demo button label
+    const bd = document.getElementById('btn-demo');
+    if (bd) bd.textContent = _s.demo_active ? 'Stop Demo' : 'Demo Mode';
+
     // BLE status pill
     updateBlePill(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
     // Pulse BLE dot during drive phase
     const bleDot = document.getElementById('ble-dot');
     if (bleDot) bleDot.classList.toggle('rowing', _active && _s.stroke_state === 1);
+    if (bleDot) bleDot.classList.toggle('demo', !!_s.demo_active);
 
     // Re-render current screen
     renderScreen();
@@ -1149,6 +1157,10 @@ function toggleSessionPanel() {
 }
 function closeSessionPanel() {
   document.getElementById('session-panel').classList.remove('open');
+}
+
+async function toggleDemo() {
+  await fetch('/api/demo', {method:'POST'});
 }
 
 function openTargetModal() {

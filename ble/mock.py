@@ -1,9 +1,9 @@
 """
 ble/mock.py — Fake PM5 data for offline development.
 
-Set MOCK_BLE=1 env var to start this instead of real BLE.
-Simulates ~24 SPM / 2:10/500m pace by calling the same parse_*
-functions as live BLE callbacks — all server.py logic works unchanged.
+Set MOCK_BLE=1 env var to start at server launch, or POST /api/demo to
+toggle at runtime. Simulates ~24 SPM / 2:10/500m pace by calling the same
+parse_* functions as live BLE callbacks — all server.py logic works unchanged.
 """
 import struct
 import threading
@@ -16,16 +16,18 @@ from ble.pm5 import (
 )
 
 # ── Realistic constants ───────────────────────────────────────────────────────
-_SPEED_MM_S  = 3846   # 2:10 / 500m
-_DRAG        = 127
-_DRIVE_CM    = 86     # drive length
-_DRIVE_TICKS = 60     # * 0.01 s = 0.60 s
-_REC_TICKS   = 190    # * 0.01 s = 1.90 s  →  2.50 s/stroke → 24 SPM
-_PEAK_N10    = 2800   # peak force * 10
-_AVG_N10     = 1950   # avg  force * 10
-_STROKE_CM2  = 960    # stroke distance * 100 = 9.60 m
-_WORK_J10    = 2450   # work per stroke * 10
-_HR_BASE     = 142
+_SPEED_MM_S   = 3846   # 2:10 / 500m
+_DRAG         = 127
+_DRIVE_CM     = 86
+_DRIVE_TICKS  = 60     # * 0.01 s = 0.60 s
+_REC_TICKS    = 190    # * 0.01 s = 1.90 s  →  2.50 s/stroke = 24 SPM
+_PEAK_N10     = 2800
+_AVG_N10      = 1950
+_STROKE_CM2   = 960    # * 0.01 m = 9.60 m per stroke
+_WORK_J10     = 2450
+_HR_BASE      = 142
+
+_running = False   # prevents double-start
 
 
 def _gs(elapsed_cs: int, distance_dm: int, ws: int = 3) -> bytes:
@@ -63,21 +65,20 @@ def _hr(bpm: int) -> bytes:
 
 
 def _mock_loop():
+    global _running
     state["ble_status"] = "connected"
     state["ble_name"]   = "Mock PM5"
 
-    t0           = time.monotonic()
-    stroke_count = 0
-    next_stroke  = 2.5          # seconds until first stroke event
-    stroke_period = 2.5         # seconds per stroke at 24 SPM
+    t0            = time.monotonic()
+    stroke_count  = 0
+    next_stroke   = 2.5
+    stroke_period = 2.5
 
-    while True:
+    while state.get("demo_active"):
         elapsed    = time.monotonic() - t0
         elapsed_cs = round(elapsed * 100)
-        dist_m     = elapsed * (_SPEED_MM_S / 1000)
-        dist_dm    = round(dist_m * 10)
+        dist_dm    = round(elapsed * (_SPEED_MM_S / 1000) * 10)
 
-        # Drive for first 0.60 s of each 2.50 s cycle
         ss = 1 if (elapsed % stroke_period) < 0.60 else 3
 
         parse_general_status(_gs(elapsed_cs, dist_dm))
@@ -95,9 +96,19 @@ def _mock_loop():
 
         time.sleep(0.2)
 
+    # Stopped — reset BLE status so UI shows scanning again
+    state["ble_status"] = "scanning"
+    state["ble_name"]   = None
+    _running = False
+
 
 def start_mock():
-    """Start mock PM5 thread. Call instead of start_ble() when MOCK_BLE=1."""
+    """Start mock PM5 thread. Safe to call multiple times (no-ops if already running)."""
+    global _running
+    if _running:
+        return
+    _running = True
     _init_db()
     load_user_profile()
+    state["demo_active"] = True
     threading.Thread(target=_mock_loop, daemon=True, name="mock-pm5").start()

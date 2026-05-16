@@ -521,6 +521,17 @@ def api_delete_workout(workout_id: int):
     return {"ok": True}
 
 
+@app.post("/api/demo")
+def api_demo_toggle():
+    """Toggle mock PM5 emulator on/off. Returns new demo_active state."""
+    if state.get("demo_active"):
+        state["demo_active"] = False          # loop will see this and exit
+        return {"demo_active": False}
+    from ble.mock import start_mock
+    start_mock()
+    return {"demo_active": True}
+
+
 # ── Training plan ─────────────────────────────────────────────────────────────
 
 @app.get("/api/plan")

@@ -66,6 +66,7 @@ state = {
     "ble_devices": [],          # [{"address": str, "name": str}] — discovered PM5s
     "ble_address": None,        # address of selected/connected device (set by user or auto)
     "ble_name": None,           # display name of connected device
+    "demo_active": False,       # True while mock PM5 emulator is running
 }
 
 _csafe_queue = _queue.SimpleQueue()   # outbound frames: list[bytes]
