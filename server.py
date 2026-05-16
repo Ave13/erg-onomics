@@ -6,6 +6,7 @@ Run:
 
 Open http://erg.local:8501 (home WiFi) or http://10.0.0.1:8501 (ErgRower AP).
 """
+import os
 import sqlite3
 import subprocess
 import threading
@@ -20,11 +21,12 @@ from pydantic import BaseModel
 
 from sensors.tof import start_tof
 from ble.pm5 import (
-    state, start_ble,
+    state, start_ble, send_csafe,
     start_session, stop_session, pause_session, resume_session,
     find_resumable_session, has_user_profile,
     save_user_profile, load_user_profile,
 )
+from ble.csafe import workout_frames
 from ble.ftms import start_ftms
 from ui.audio import check_and_cue, reset_cues
 from db.workouts import list_workouts, get_workout, save_workout, delete_workout, workout_summary
@@ -55,8 +57,11 @@ _WLAN = _detect_wlan()
 app = FastAPI()
 
 # ── Start background threads once at import time ─────────────────────────────
-_ble_thread = threading.Thread(target=start_ble, daemon=True, name="ble")
-_ble_thread.start()
+if os.environ.get("MOCK_BLE"):
+    from ble.mock import start_mock
+    start_mock()
+else:
+    threading.Thread(target=start_ble, daemon=True, name="ble").start()
 
 start_ftms()
 start_tof(state)
@@ -501,6 +506,12 @@ class SelectWorkout(BaseModel):
 def api_select_workout(body: SelectWorkout):
     state["active_workout_id"]   = body.workout_id
     state["active_workout_name"] = body.workout_name
+    # Sync workout to PM5 over BLE (no-op if disconnected or mock)
+    if state.get("ble_status") == "connected" and not os.environ.get("MOCK_BLE"):
+        w = get_workout(body.workout_id)
+        if w:
+            intervals = w[2].get("intervals", [])
+            send_csafe(workout_frames(intervals))
     return {"ok": True}
 
 

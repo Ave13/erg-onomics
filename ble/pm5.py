@@ -1,9 +1,11 @@
 import asyncio
 import collections
+import queue as _queue
 import sqlite3
 import time
 
 from bleak import BleakClient, BleakScanner
+from ble.csafe import CSAFE_TX_UUID, workout_frames  # noqa: F401
 
 ROWING_STATUS_UUID   = "CE060031-43E5-11E4-916C-0800200C9A66"
 ADD_STATUS_UUID      = "CE060032-43E5-11E4-916C-0800200C9A66"
@@ -65,6 +67,8 @@ state = {
     "ble_address": None,        # address of selected/connected device (set by user or auto)
     "ble_name": None,           # display name of connected device
 }
+
+_csafe_queue = _queue.SimpleQueue()   # outbound frames: list[bytes]
 
 _stroke_times = collections.deque(maxlen=10)
 _STROKE_STALE_SECS = 10
@@ -541,11 +545,25 @@ async def ble_main():
                 await client.start_notify(HR_UUID,              lambda s, d: parse_heart_rate(d))
                 await client.start_notify(WORKOUT_SUMMARY_UUID, lambda s, d: parse_workout_summary(d))
                 while client.is_connected:
+                    # Drain outbound CSAFE write queue
+                    while not _csafe_queue.empty():
+                        try:
+                            frames = _csafe_queue.get_nowait()
+                            for f in frames:
+                                await client.write_gatt_char(CSAFE_TX_UUID, f, response=True)
+                                await asyncio.sleep(0.05)
+                        except _queue.Empty:
+                            break
                     await asyncio.sleep(1)
         except Exception:
             pass
         state["ble_status"] = "disconnected"
         await asyncio.sleep(3)
+
+
+def send_csafe(frames: list):
+    """Queue CSAFE frames for writing to the PM5 on the next BLE loop iteration."""
+    _csafe_queue.put(frames)
 
 
 def start_ble():
