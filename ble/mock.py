@@ -2,10 +2,12 @@
 ble/mock.py — Fake PM5 data for offline development.
 
 Set MOCK_BLE=1 env var to start at server launch, or POST /api/demo to
-toggle at runtime. Simulates ~24 SPM / 2:10/500m pace by calling the same
-parse_* functions as live BLE callbacks — all server.py logic works unchanged.
+toggle at runtime. Simulates ~24 SPM / 2:10/500m pace with realistic
+per-stroke variation so all screens animate as during actual rowing.
 """
+import math
 import struct
+import sys
 import threading
 import time
 
@@ -15,19 +17,16 @@ from ble.pm5 import (
     parse_heart_rate, state,
 )
 
-# ── Realistic constants ───────────────────────────────────────────────────────
-_SPEED_MM_S   = 3846   # 2:10 / 500m
+# ── Constants ─────────────────────────────────────────────────────────────────
+_SPEED_BASE   = 3846   # 2:10/500m in mm/s
 _DRAG         = 127
 _DRIVE_CM     = 86
-_DRIVE_TICKS  = 60     # * 0.01 s = 0.60 s
-_REC_TICKS    = 190    # * 0.01 s = 1.90 s  →  2.50 s/stroke = 24 SPM
-_PEAK_N10     = 2800
-_AVG_N10      = 1950
-_STROKE_CM2   = 960    # * 0.01 m = 9.60 m per stroke
+_DRIVE_TICKS  = 60     # * 0.01 s = 0.60 s drive time
+_REC_TICKS    = 190    # * 0.01 s = 1.90 s recovery  →  24 SPM
 _WORK_J10     = 2450
 _HR_BASE      = 142
 
-_running = False   # prevents double-start
+_running = False
 
 
 def _gs(elapsed_cs: int, distance_dm: int, ws: int = 3) -> bytes:
@@ -66,44 +65,78 @@ def _hr(bpm: int) -> bytes:
 
 def _mock_loop():
     global _running
-    state["ble_status"] = "connected"
-    state["ble_name"]   = "Mock PM5"
+    state["ble_status"]     = "connected"
+    state["ble_name"]       = "Mock PM5"
+    state["session_active"] = True
+    state["session_paused"] = False
 
     t0            = time.monotonic()
     stroke_count  = 0
     next_stroke   = 2.5
     stroke_period = 2.5
 
+    # Per-stroke varying targets (updated at each stroke event)
+    stroke_speed  = _SPEED_BASE   # target speed for current stroke
+
     while state.get("demo_active"):
-        elapsed    = time.monotonic() - t0
-        elapsed_cs = round(elapsed * 100)
-        dist_dm    = round(elapsed * (_SPEED_MM_S / 1000) * 10)
+        try:
+            elapsed    = time.monotonic() - t0
+            elapsed_cs = round(elapsed * 100)
+            dist_dm    = round(elapsed * (_SPEED_BASE / 1000) * 10)
 
-        ss = 1 if (elapsed % stroke_period) < 0.60 else 3
+            # Phase within the current stroke cycle
+            phase = elapsed % stroke_period
 
-        parse_general_status(_gs(elapsed_cs, dist_dm))
-        parse_add_status_1(_as1(_SPEED_MM_S, ss, _DRAG))
+            if phase < 0.60:
+                ss    = 1                         # drive
+                speed = stroke_speed + 600        # surge during drive
+            elif phase < 0.80:
+                ss    = 2                         # decelerate
+                speed = stroke_speed - 200
+            else:
+                ss    = 3                         # recovery
+                speed = stroke_speed - 400
 
-        if elapsed >= next_stroke:
-            stroke_count += 1
-            parse_stroke_data(_sd(
-                _DRIVE_CM, _DRIVE_TICKS, _REC_TICKS, _STROKE_CM2,
-                _PEAK_N10, _AVG_N10, _WORK_J10, stroke_count,
-            ))
-            if stroke_count % 2 == 0:
-                parse_heart_rate(_hr(_HR_BASE + stroke_count % 6))
-            next_stroke += stroke_period
+            speed = max(500, speed)
+
+            parse_general_status(_gs(elapsed_cs, dist_dm))
+            parse_add_status_1(_as1(speed, ss, _DRAG))
+
+            if elapsed >= next_stroke:
+                stroke_count += 1
+                n = stroke_count
+
+                # Force values vary realistically per stroke
+                peak_n10 = 2800 + round(400 * math.sin(n * 0.83))
+                avg_n10  = 1950 + round(200 * math.sin(n * 0.61))
+                drive_cm = _DRIVE_CM + round(4 * math.sin(n * 1.1))
+                stroke_cm2 = 960 + round(40 * math.sin(n * 0.5))
+
+                parse_stroke_data(_sd(
+                    drive_cm, _DRIVE_TICKS, _REC_TICKS, stroke_cm2,
+                    peak_n10, avg_n10, _WORK_J10, n,
+                ))
+                if n % 2 == 0:
+                    parse_heart_rate(_hr(_HR_BASE + n % 8))
+
+                # Next stroke's speed target varies around baseline
+                stroke_speed = _SPEED_BASE + round(300 * math.sin(n * 1.37))
+                next_stroke += stroke_period
+
+        except Exception as e:
+            print(f"[mock] {e}", file=sys.stderr)
 
         time.sleep(0.2)
 
-    # Stopped — reset BLE status so UI shows scanning again
-    state["ble_status"] = "scanning"
-    state["ble_name"]   = None
+    # Teardown
+    state["session_active"] = False
+    state["ble_status"]     = "scanning"
+    state["ble_name"]       = None
     _running = False
 
 
 def start_mock():
-    """Start mock PM5 thread. Safe to call multiple times (no-ops if already running)."""
+    """Start mock PM5 thread. Safe to call multiple times — no-ops if already running."""
     global _running
     if _running:
         return

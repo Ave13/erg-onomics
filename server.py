@@ -525,7 +525,9 @@ def api_delete_workout(workout_id: int):
 def api_demo_toggle():
     """Toggle mock PM5 emulator on/off. Returns new demo_active state."""
     if state.get("demo_active"):
-        state["demo_active"] = False          # loop will see this and exit
+        state["demo_active"]    = False   # loop sees this and exits
+        state["session_active"] = False
+        state["session_paused"] = False
         return {"demo_active": False}
     from ble.mock import start_mock
     start_mock()
