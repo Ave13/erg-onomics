@@ -29,7 +29,7 @@ from ble.pm5 import (
 from ble.csafe import workout_frames
 from ble.ftms import start_ftms
 from ui.audio import check_and_cue, reset_cues
-from db.workouts import list_workouts, get_workout, save_workout, delete_workout, workout_summary
+from db.workouts import list_workouts, get_workout, save_workout, update_workout, delete_workout, workout_summary
 from db.training_plan import get_plan, set_day, clear_day, get_today
 from db.strive import calculate_strive_score, ZONE_COLORS, ZONE_NAMES, estimate_max_hr
 from db.streak import get_streak
@@ -516,6 +516,21 @@ def api_select_workout(body: SelectWorkout):
             intervals = w[2].get("intervals", [])
             send_csafe(workout_frames(intervals))
     return {"ok": True}
+
+
+@app.get("/api/workouts/{workout_id}")
+def api_get_workout(workout_id: int):
+    w = get_workout(workout_id)
+    if not w:
+        raise HTTPException(status_code=404, detail="Not found")
+    wid, name, defn, is_preset = w
+    return {"id": wid, "name": name, "intervals": defn.get("intervals", []), "is_preset": is_preset}
+
+
+@app.put("/api/workouts/{workout_id}")
+def api_update_workout(workout_id: int, body: WorkoutBody):
+    wid = update_workout(workout_id, body.name, body.intervals)
+    return {"id": wid}
 
 
 @app.delete("/api/workouts/{workout_id}")
