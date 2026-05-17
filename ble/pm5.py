@@ -76,6 +76,8 @@ _stroke_times = collections.deque(maxlen=10)
 _STROKE_STALE_SECS = 10
 _EMA_ALPHA = 0.25          # smoothing factor for interval EMA
 _ema_interval_secs = None  # exponential moving average of inter-stroke interval
+_EMA_WATTS_ALPHA = 0.12    # heavy smoothing for live speed-derived watts
+_ema_watts = None
 
 
 def speed_to_pace(speed_mm_s):
@@ -299,14 +301,21 @@ def parse_general_status(data):
 
 
 def parse_add_status_1(data):
+    global _ema_watts
     if len(data) < 2:
         return
     speed_mm_s = int.from_bytes(data[0:2], "little")
     pace_str = speed_to_pace(speed_mm_s)
     pace_sec = (500 / (speed_mm_s / 1000)) if speed_mm_s > 0 else 0
     state["pace"]       = pace_str
-    state["watts"]      = pace_to_watts(pace_sec)
     state["speed_mm_s"] = speed_mm_s
+    # Smooth instantaneous watts; parse_stroke_data overrides with stroke average
+    instant = pace_to_watts(pace_sec) if pace_sec > 0 else 0
+    if _ema_watts is None:
+        _ema_watts = instant
+    else:
+        _ema_watts = _EMA_WATTS_ALPHA * instant + (1 - _EMA_WATTS_ALPHA) * _ema_watts
+    state["watts"] = round(_ema_watts)
     if len(data) >= 3:
         state["stroke_state"] = data[2] & 0x03   # lower 2 bits: 0=idle,1=drive,2=decel,3=recovery
     if len(data) >= 4:
@@ -338,6 +347,10 @@ def parse_stroke_data(data):
     state["drive_time_secs"]     = drive_time_secs
     state["drive_length_cm_raw"] = drive_length_cm
     state["recovery_secs"]       = recovery_secs
+    # Stroke-average watts: work / stroke_period — matches what the PM5 display shows
+    stroke_period = drive_time_secs + recovery_secs
+    if work_per_stroke_j > 0 and stroke_period > 0:
+        state["watts"] = round(work_per_stroke_j / stroke_period)
 
     now = time.monotonic()
     interval = None
@@ -390,8 +403,9 @@ def parse_workout_summary(data):
 
 
 def start_session(resume_id=None, workout_id=None):
-    global _ema_interval_secs
+    global _ema_interval_secs, _ema_watts
     _ema_interval_secs = None
+    _ema_watts = None
     _stroke_times.clear()
     for k in list(state.keys()):
         if k.startswith("_rest_t"):

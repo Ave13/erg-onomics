@@ -23,7 +23,7 @@ _DRAG         = 127
 _DRIVE_CM     = 86
 _DRIVE_TICKS  = 60     # * 0.01 s = 0.60 s drive time
 _REC_TICKS    = 190    # * 0.01 s = 1.90 s recovery  →  24 SPM
-_WORK_J10     = 2450
+_WORK_J10     = 3975   # 159W × 2.5s stroke ≈ 397.5J → consistent with _SPEED_BASE
 _HR_BASE      = 142
 
 _running = False
