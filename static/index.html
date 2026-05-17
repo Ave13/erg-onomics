@@ -472,6 +472,21 @@ button.sm:active { opacity:.75; }
     </div>
   </div>
   <div id="wifi-msg" style="font-size:13px;min-height:18px;margin-top:6px"></div>
+
+  <!-- BLE -->
+  <h3>Bluetooth</h3>
+  <div id="pb-bar" style="background:var(--card);border-radius:10px;padding:11px 13px;
+       margin-bottom:10px;font-size:13px;display:flex;align-items:center;gap:8px;">
+    <span id="pb-dot" style="width:9px;height:9px;border-radius:50%;background:var(--label);flex-shrink:0"></span>
+    <span id="pb-txt">Checking…</span>
+  </div>
+  <div id="pb-devlist"></div>
+  <div style="display:flex;gap:8px;margin-bottom:6px">
+    <button id="pb-connect-btn" class="btn btn-neutral" style="height:50px;font-size:15px;flex:1"
+            onclick="openErgPicker()">Scan / Connect</button>
+    <button id="pb-disc-btn" class="btn btn-neutral" style="height:50px;font-size:15px;flex:1;display:none"
+            onclick="doDisconnect()">Disconnect</button>
+  </div>
 </div>
 
 <!-- ══ TARGET PACE MODAL ════════════════════════════════════════════════════ -->
@@ -1144,6 +1159,7 @@ async function tick() {
 
     // BLE status pill
     updateBlePill(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
+    updateProfileBle(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
     // Pulse BLE dot during drive phase
     const bleDot = document.getElementById('ble-dot');
     if (bleDot) bleDot.classList.toggle('rowing', _active && _s.stroke_state === 1);
@@ -1206,6 +1222,36 @@ async function toggleDemo() {
 }
 async function doDisconnect() {
   await fetch('/api/ble/disconnect', {method:'POST'});
+}
+
+function updateProfileBle(status, name, devices) {
+  const dot  = document.getElementById('pb-dot');
+  const txt  = document.getElementById('pb-txt');
+  const conn = document.getElementById('pb-connect-btn');
+  const disc = document.getElementById('pb-disc-btn');
+  const list = document.getElementById('pb-devlist');
+  if (!dot) return;
+  const dotColor = {scanning:'var(--label)', found:'var(--blue)',
+                    connecting:'var(--yellow)', connected:'var(--green)',
+                    disconnected:'var(--red)'};
+  const label = {scanning:'Scanning for ergs…', found:'Erg found',
+                 connecting:'Connecting…', connected: name || 'Connected',
+                 disconnected:'Disconnected'};
+  dot.style.background = dotColor[status] || 'var(--label)';
+  txt.textContent = label[status] || status;
+  const isConn = status === 'connected';
+  if (conn) conn.style.display = isConn ? 'none' : '';
+  if (disc) disc.style.display = isConn ? '' : 'none';
+  if (list) {
+    list.innerHTML = (!isConn && devices.length)
+      ? devices.map(d =>
+          `<div class="wifi-saved" style="cursor:pointer" onclick="selectErg('${d.address}','${d.name.replace(/'/g,"\\'")}')">
+            <div><div class="name">${d.name}</div>
+            <div style="font-size:11px;color:var(--label)">${d.address}</div></div>
+            <span style="color:var(--blue);font-size:13px">Connect</span>
+          </div>`).join('')
+      : '';
+  }
 }
 async function dismissResume() {
   document.getElementById('resume-prompt').style.display = 'none';
