@@ -134,15 +134,18 @@ def _update_interval_state():
                 state["interval_remaining"] = round(work_end - dist)
                 return
             cumulative_dist = work_end
-            # rest phase (time-based)
+            # rest phase: stamp when rest began so countdown is relative, not absolute
             if rest > 0:
-                rest_end = cumulative_time + rest
-                if elapsed < rest_end:
+                rest_key = f"_rest_t{i}"
+                if state.get(rest_key) is None:
+                    state[rest_key] = state.get("elapsed", 0)
+                rest_start = state[rest_key]
+                if state.get("elapsed", 0) < rest_start + rest:
                     state["interval_index"] = i
                     state["interval_phase"] = "rest"
-                    state["interval_remaining"] = round(rest_end - elapsed)
+                    state["interval_remaining"] = round(rest_start + rest - state.get("elapsed", 0))
                     return
-                cumulative_time += rest
+                state.pop(rest_key, None)
 
         elif iv_type == "time":
             work_end = cumulative_time + iv.get("seconds", 0)

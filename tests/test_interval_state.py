@@ -118,12 +118,25 @@ class TestUpdateIntervalStateDistance:
         ])
         srv, fake_state = server
         monkeypatch.setattr(srv, "get_workout", lambda w: wk_mod.get_workout(w))
-        # Past first work interval (500m), 30s elapsed → in rest phase (0–60s of rest)
+
+        # First detection: rest stamp is set to elapsed=300, full 60s remaining.
         _set_state(fake_state, active_workout_id=wid, session_active=True,
-                   distance=550.0, elapsed=30.0)
+                   distance=550.0, elapsed=300.0)
         srv._update_interval_state()
         assert fake_state["interval_phase"] == "rest"
-        assert fake_state["interval_remaining"] == 30  # 60 - 30
+        assert fake_state["interval_remaining"] == 60  # full rest at first detection
+
+        # Mid-rest: 30s later (elapsed=330), stamp already set → 30s remaining.
+        fake_state["elapsed"] = 330.0
+        srv._update_interval_state()
+        assert fake_state["interval_phase"] == "rest"
+        assert fake_state["interval_remaining"] == 30  # 60 - 30 elapsed in rest
+
+        # Rest complete: elapsed=361 → moves to next interval.
+        fake_state["elapsed"] = 361.0
+        srv._update_interval_state()
+        assert fake_state["interval_index"] == 1
+        assert fake_state["interval_phase"] == "work"
 
 
 class TestUpdateIntervalStateTime:

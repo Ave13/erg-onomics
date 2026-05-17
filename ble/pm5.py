@@ -327,15 +327,16 @@ def parse_stroke_data(data):
     work_per_stroke_j = int.from_bytes(data[16:18], "little") / 10
     stroke_count      = int.from_bytes(data[18:20], "little")
 
-    state["drive_time"]        = f"{drive_time_secs:.2f}s"
-    state["recovery"]          = f"{recovery_secs:.2f}s"
-    state["drive_length"]      = f"{drive_length_cm / 100:.2f}m"
-    state["stroke_count"]      = stroke_count
-    state["peak_force_n"]      = peak_force_n
-    state["avg_force_n"]       = avg_force_n
-    state["drive_time_secs"]   = drive_time_secs
+    state["drive_time"]          = f"{drive_time_secs:.2f}s"
+    state["recovery"]            = f"{recovery_secs:.2f}s"
+    state["drive_length"]        = f"{drive_length_cm / 100:.2f}m"
+    state["stroke_count"]        = stroke_count
+    state["peak_force_n"]        = peak_force_n
+    state["avg_force_n"]         = avg_force_n
+    state["work_per_stroke_j"]   = work_per_stroke_j
+    state["drive_time_secs"]     = drive_time_secs
     state["drive_length_cm_raw"] = drive_length_cm
-    state["recovery_secs"]     = recovery_secs
+    state["recovery_secs"]       = recovery_secs
 
     now = time.monotonic()
     interval = None
@@ -391,6 +392,9 @@ def start_session(resume_id=None, workout_id=None):
     global _ema_interval_secs
     _ema_interval_secs = None
     _stroke_times.clear()
+    for k in list(state.keys()):
+        if k.startswith("_rest_t"):
+            del state[k]
     if resume_id:
         state["session_id"]     = resume_id
         state["session_active"] = True
