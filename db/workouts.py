@@ -79,6 +79,19 @@ def save_workout(name, intervals):
         return None
 
 
+def update_workout(workout_id, name, intervals):
+    """Update name and intervals of a custom (non-preset) workout."""
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            conn.execute(
+                "UPDATE workouts SET name=?, definition=? WHERE id=? AND is_preset=0",
+                (name, json.dumps({"intervals": intervals}), workout_id),
+            )
+        return workout_id
+    except Exception:
+        return None
+
+
 def delete_workout(workout_id):
     """Delete a custom (non-preset) workout."""
     try:
