@@ -70,6 +70,7 @@ state = {
 }
 
 _csafe_queue = _queue.SimpleQueue()   # outbound frames: list[bytes]
+_disconnect_requested = False          # set True to drop BLE connection
 
 _stroke_times = collections.deque(maxlen=10)
 _STROKE_STALE_SECS = 10
@@ -550,6 +551,11 @@ async def ble_main():
                 await client.start_notify(HR_UUID,              lambda s, d: parse_heart_rate(d))
                 await client.start_notify(WORKOUT_SUMMARY_UUID, lambda s, d: parse_workout_summary(d))
                 while client.is_connected:
+                    global _disconnect_requested
+                    if _disconnect_requested:
+                        _disconnect_requested = False
+                        state["ble_address"] = None
+                        break
                     # Drain outbound CSAFE write queue
                     while not _csafe_queue.empty():
                         try:
@@ -569,6 +575,13 @@ async def ble_main():
 def send_csafe(frames: list):
     """Queue CSAFE frames for writing to the PM5 on the next BLE loop iteration."""
     _csafe_queue.put(frames)
+
+
+def request_disconnect():
+    """Ask the BLE loop to drop the current connection and clear the saved address."""
+    global _disconnect_requested
+    _disconnect_requested = True
+    state["ble_address"] = None
 
 
 def start_ble():

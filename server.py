@@ -21,7 +21,7 @@ from pydantic import BaseModel
 
 from sensors.tof import start_tof
 from ble.pm5 import (
-    state, start_ble, send_csafe,
+    state, start_ble, send_csafe, request_disconnect,
     start_session, stop_session, pause_session, resume_session,
     find_resumable_session, has_user_profile,
     save_user_profile, load_user_profile,
@@ -521,6 +521,13 @@ def api_select_workout(body: SelectWorkout):
 @app.delete("/api/workouts/{workout_id}")
 def api_delete_workout(workout_id: int):
     delete_workout(workout_id)
+    return {"ok": True}
+
+
+@app.post("/api/ble/disconnect")
+def api_ble_disconnect():
+    """Drop the current PM5 connection and clear saved address."""
+    request_disconnect()
     return {"ok": True}
 
 
