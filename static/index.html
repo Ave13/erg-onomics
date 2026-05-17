@@ -413,7 +413,7 @@ button.sm:active { opacity:.75; }
 <div id="page-workouts" class="page">
   <h3>Library</h3>
   <div id="wk-list"></div>
-  <h3 style="margin-top:16px">New Workout</h3>
+  <h3 id="wk-builder-title" style="margin-top:16px">New Workout</h3>
   <div class="form-row"><label>Name</label>
     <input id="wk-name" type="text" value="My Workout" autocomplete="off">
   </div>
@@ -589,6 +589,7 @@ let _initCameraRunning = false;
 // Workout builder
 let _wkIntervals = [];   // working list of interval objects
 let _wkEditIdx   = -1;   // index being edited (-1 = new interval)
+let _wkEditId    = null; // workout id being edited (null = new workout)
 
 // ── Navigation ────────────────────────────────────────────────────────────────
 function nav(page) {
@@ -637,16 +638,10 @@ function renderScreen() {
   if (_screen === 3) {
     if (changed) { w.innerHTML = renderForceCurveHTML(); bindFlipCards(); }
     else {
-      const sn = document.getElementById('streak-num');
       const sp = document.getElementById('fc-peak-val');
       const sa = document.getElementById('fc-avg-val');
-      const sw = document.getElementById('fc-work-val');
-      const sd = document.getElementById('fc-drive-val');
-      if (sn) sn.textContent = _s.perfect_streak ?? 0;
       if (sp) sp.textContent = fmtN(_s.peak_force_n);
       if (sa) sa.textContent = fmtN(_s.avg_force_n);
-      if (sw) sw.textContent = _s.work_per_stroke_j ? Math.round(_s.work_per_stroke_j)+'J' : '--';
-      if (sd) sd.textContent = _s.drive_length ?? '--';
     }
     requestAnimationFrame(drawForce);
     return;
@@ -725,10 +720,6 @@ function renderPower() {
     ${gCard('watts', alts_watts(), 'wide hero')}
     ${gCard('pace',  [{label:'Pace',     value:()=>_s.pace??'--'}])}
     ${gCard('spm',   [{label:'SPM',      value:()=>_s.spm??'--'}])}
-    ${gCard('dist',  [{label:'Distance', value:()=>_s.distance_str??'0'}])}
-    ${gCard('time',  [{label:'Time',     value:()=>_s.elapsed_str}])}
-    ${gCard('strokes',[{label:'Strokes', value:()=>_s.stroke_count??0}])}
-    ${gCard('p-drag',[{label:'Drag Factor',value:()=>_s.drag_factor??'--'}])}
   </div>`;
 }
 
@@ -756,14 +747,7 @@ function renderEndurance() {
       <div class="val" ${hrValStyle}>${hrAlt.value()??'--'}</div>
       ${zone >= 0 ? `<div class="sub">${zoneNames[zone]}</div>` : ''}
     </div>
-    <div class="g-card wide" style="padding:8px 10px;cursor:default">
-      <div id="zone-strip">${ZONE_COLORS.map((c,i)=>
-        `<span style="flex:${i===zone?'2':'1'};background:${c};opacity:${i===zone?1:.35}"></span>`
-      ).join('')}</div>
-    </div>
     ${gCard('e-pace',  [{label:'Pace',     value:()=>_s.pace??'--'}])}
-    ${gCard('e-dist',  [{label:'Distance', value:()=>_s.distance_str??'0'}])}
-    ${gCard('e-time',  [{label:'Time',     value:()=>_s.elapsed_str}])}
     ${gCard('e-watts', [{label:'Watts',    value:()=>_s.watts??0}])}
   </div>`;
 }
@@ -808,34 +792,24 @@ function peakRatioClass() {
   return r >= 1.3 && r <= 1.8 ? 'good' : r > 2.0 ? 'bad' : 'warn';
 }
 function renderTechnique() {
-  const rc = ratioClass(), pc = peakRatioClass();
+  const rc = ratioClass();
   return `<div class="g-grid">
     <div class="g-card"><div class="lbl">Drive Time</div><div class="val">${_s.drive_time??'--'}</div></div>
     <div class="g-card"><div class="lbl">Recovery</div><div class="val">${_s.recovery??'--'}</div></div>
     <div class="g-card ${rc?'val-'+rc:''}"><div class="lbl">Dr:Rec Ratio</div><div class="val">${driveRecoveryRatio()}</div></div>
     <div class="g-card"><div class="lbl">SPM</div><div class="val">${_s.spm??'--'}</div></div>
-    <div class="g-card"><div class="lbl">Drive Length</div><div class="val">${_s.drive_length??'--'}</div></div>
-    <div class="g-card"><div class="lbl">Peak Force</div><div class="val">${fmtN(_s.peak_force_n)}</div></div>
-    <div class="g-card"><div class="lbl">Avg Force</div><div class="val">${fmtN(_s.avg_force_n)}</div></div>
-    <div class="g-card ${pc?'val-'+pc:''}"><div class="lbl">Peak/Avg</div><div class="val">${peakRatio()}</div></div>
   </div>`;
 }
 
 // ── Screen 3: Force Curve + metrics ──────────────────────────────────────────
 function renderForceCurveHTML() {
-  const streak = _s.perfect_streak ?? 0;
-  const best   = _s.perfect_streak_best ?? 0;
-  const wj = _s.work_per_stroke_j ? Math.round(_s.work_per_stroke_j)+'J' : '--';
   return `<div class="g-grid">
-    <div id="force-wrap" class="g-card wide tall">
+    <div id="force-wrap" class="g-card wide">
       <div class="lbl" style="margin-bottom:6px">Drive Curve</div>
       <canvas id="force-canvas"></canvas>
-      <div id="fc-streak">Streak: <span id="streak-num">${streak}</span> · Best: ${best}</div>
     </div>
     <div class="g-card"><div class="lbl">Peak Force</div><div class="val" id="fc-peak-val">${fmtN(_s.peak_force_n)}</div></div>
     <div class="g-card"><div class="lbl">Avg Force</div><div class="val" id="fc-avg-val">${fmtN(_s.avg_force_n)}</div></div>
-    <div class="g-card"><div class="lbl">Work/Stroke</div><div class="val" id="fc-work-val">${wj}</div></div>
-    <div class="g-card"><div class="lbl">Drive Length</div><div class="val" id="fc-drive-val">${_s.drive_length??'--'}</div></div>
   </div>`;
 }
 function drawForce() {
@@ -853,7 +827,7 @@ function drawForce() {
   const peak  = _s.peak_force_n    || 0;
   const avg   = _s.avg_force_n     || 0;
   const expPk = _s.expected_peak_n || 220;
-  const maxN  = Math.max(peak, expPk, 80) * 1.22;
+  const maxN  = (peak > 20 ? peak : Math.max(expPk, 80)) * 1.2;
 
   const pad = { l:10, r:10, t:16, b:22 };
   const cW  = W - pad.l - pad.r;
@@ -1182,6 +1156,17 @@ async function tick() {
 }
 setInterval(tick, 500);
 
+// ── Wake lock — prevent screen sleep on iPhone/iPad ───────────────────────────
+let _wakeLock = null;
+async function _acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try { _wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') _acquireWakeLock();
+});
+_acquireWakeLock();
+
 // ── Startup ───────────────────────────────────────────────────────────────────
 (async () => {
   renderDots();
@@ -1389,6 +1374,7 @@ async function loadWorkouts() {
            <div class="sub">${w.summary}</div></div>
       <div style="display:flex;gap:6px">
         <button class="sm sel" onclick="selectWorkout(${w.id},'${w.name.replace(/'/g,"\\'")}')">Use</button>
+        ${!w.is_preset ? `<button class="sm" onclick="editWorkout(${w.id})">Edit</button>` : ''}
         ${!w.is_preset ? `<button class="sm" style="color:var(--red)" onclick="deleteWorkout(${w.id})">Del</button>` : ''}
       </div>
     </div>`
@@ -1403,6 +1389,17 @@ async function selectWorkout(id, name) {
 async function deleteWorkout(id) {
   await fetch(`/api/workouts/${id}`, {method:'DELETE'});
   await loadWorkouts();
+}
+async function editWorkout(id) {
+  const w = await fetch(`/api/workouts/${id}`).then(r => r.json());
+  if (!w) return;
+  _wkEditId    = id;
+  _wkIntervals = w.intervals || [];
+  document.getElementById('wk-name').value = w.name;
+  const title = document.getElementById('wk-builder-title');
+  if (title) title.textContent = 'Edit Workout';
+  wkRenderList();
+  document.getElementById('wk-name').scrollIntoView({behavior:'smooth'});
 }
 
 // ── Workout builder ───────────────────────────────────────────────────────────
@@ -1550,10 +1547,19 @@ async function saveWorkout() {
   const errEl = document.getElementById('wk-err');
   errEl.textContent = '';
   if (!_wkIntervals.length) { errEl.textContent = 'Add at least one interval'; return; }
-  await fetch('/api/workouts', {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({name, intervals: _wkIntervals})});
+  if (_wkEditId !== null) {
+    await fetch(`/api/workouts/${_wkEditId}`, {method:'PUT',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, intervals: _wkIntervals})});
+    _wkEditId = null;
+  } else {
+    await fetch('/api/workouts', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name, intervals: _wkIntervals})});
+  }
   _wkIntervals = [];
   document.getElementById('wk-name').value = 'My Workout';
+  const title = document.getElementById('wk-builder-title');
+  if (title) title.textContent = 'New Workout';
   wkRenderList();
   await loadWorkouts();
 }
