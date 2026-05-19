@@ -614,7 +614,13 @@ function nav(page) {
   const idx = ['row','history','workouts','plan','profile'].indexOf(page);
   document.querySelectorAll('#nav button')[idx].classList.add('active');
   if (page === 'history')  loadHistory();
-  if (page === 'workouts') { loadWorkouts(); wkRenderList(); }
+  if (page === 'workouts') {
+    _wkEditId = null; _wkIntervals = [];
+    const t = document.getElementById('wk-builder-title');
+    if (t) t.textContent = 'New Workout';
+    document.getElementById('wk-name').value = 'My Workout';
+    loadWorkouts();
+  }
   if (page === 'plan')     loadPlan();
   if (page === 'profile')  { loadProfile(); loadWifi(); }
 }
@@ -1412,19 +1418,24 @@ async function loadHistory() {
 
 // ── Workouts ──────────────────────────────────────────────────────────────────
 async function loadWorkouts() {
-  const ws = await fetch('/api/workouts').then(r => r.json());
-  _wkIntervals = [];
-  document.getElementById('wk-list').innerHTML = ws.map(w =>
-    `<div class="wk-row">
-      <div><div class="name">${w.name}${w.is_preset ? '' : ' <span style="font-size:11px;color:var(--label)">[custom]</span>'}</div>
-           <div class="sub">${w.summary}</div></div>
-      <div style="display:flex;gap:6px">
-        <button class="sm sel" onclick="selectWorkout(${w.id},'${w.name.replace(/'/g,"\\'")}')">Use</button>
-        ${!w.is_preset ? `<button class="sm" onclick="editWorkout(${w.id})">Edit</button>` : ''}
-        ${!w.is_preset ? `<button class="sm" style="color:var(--red)" onclick="deleteWorkout(${w.id})">Del</button>` : ''}
-      </div>
-    </div>`
-  ).join('');
+  const listEl = document.getElementById('wk-list');
+  try {
+    const ws = await fetch('/api/workouts').then(r => r.json());
+    if (!Array.isArray(ws)) throw new Error('bad response');
+    listEl.innerHTML = ws.map(w =>
+      `<div class="wk-row">
+        <div><div class="name">${w.name}${w.is_preset ? '' : ' <span style="font-size:11px;color:var(--label)">[custom]</span>'}</div>
+             <div class="sub">${w.summary}</div></div>
+        <div style="display:flex;gap:6px">
+          <button class="sm sel" onclick="selectWorkout(${w.id},'${w.name.replace(/'/g,"\\'")}')">Use</button>
+          ${!w.is_preset ? `<button class="sm" onclick="editWorkout(${w.id})">Edit</button>` : ''}
+          ${!w.is_preset ? `<button class="sm" style="color:var(--red)" onclick="deleteWorkout(${w.id})">Del</button>` : ''}
+        </div>
+      </div>`
+    ).join('');
+  } catch(e) {
+    if (listEl) listEl.innerHTML = '<p style="color:var(--red);font-size:13px;padding:10px 0">Could not load workouts. Is the server running?</p>';
+  }
   wkRenderList();
 }
 async function selectWorkout(id, name) {
