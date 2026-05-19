@@ -122,6 +122,27 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 .g-card.val-warn .val { color:var(--yellow); }
 .g-card.val-bad  .val { color:var(--red); }
 
+/* ── Power screen 3-column layout ── */
+.pw-wrap { display:grid; grid-template-columns:1fr 1.6fr 1fr; gap:5px; height:100%; min-height:0; }
+.pw-col  { display:flex; flex-direction:column; gap:5px; min-height:0; }
+.pw-cell { flex:1; background:var(--card); border-radius:10px; padding:6px 8px;
+           display:flex; flex-direction:column; align-items:flex-end; justify-content:center;
+           min-height:0; overflow:hidden;
+           box-shadow:0 2px 8px rgba(0,0,0,.4);
+           border-top:1px solid rgba(255,255,255,.05); }
+.pw-cell .pw-v { font-size:clamp(16px,4.5vw,26px); font-weight:700; line-height:1; text-align:right; }
+.pw-cell .pw-u { font-size:10px; color:var(--label); line-height:1.3; text-align:right; margin-top:2px; }
+.pw-hero { flex:2; background:var(--card); border-radius:10px;
+           display:flex; flex-direction:column; align-items:center; justify-content:center;
+           box-shadow:0 2px 8px rgba(0,0,0,.4);
+           border-top:1px solid rgba(255,255,255,.05); }
+.pw-hero .pw-v { font-size:clamp(42px,11vw,70px); font-weight:800; line-height:1; text-align:center; }
+.pw-hero .pw-u { font-size:12px; color:var(--label); margin-top:6px; text-align:center; }
+.pw-bot  { flex:1; display:grid; grid-template-columns:1fr 1fr; gap:5px; min-height:0; }
+.pw-bot .pw-cell { border-radius:10px; align-items:center; justify-content:center; }
+.pw-bot .pw-cell .pw-v { font-size:clamp(14px,3.5vw,20px); text-align:center; }
+.pw-bot .pw-cell .pw-u { text-align:center; }
+
 /* ── Force curve screen ── */
 #force-wrap { display:flex; flex-direction:column; }
 #force-canvas { width:100%; height:180px; display:block; flex:1; }
@@ -683,8 +704,7 @@ function renderScreen() {
     return;
   }
 
-  // Screens 0-2: rebuild each tick (no stateful elements)
-  if (!changed) return;
+  // Screens 0-2: rebuild every tick so values stay live
   if (_screen === 0) w.innerHTML = renderPower();
   else if (_screen === 1) w.innerHTML = renderEndurance();
   else if (_screen === 2) w.innerHTML = renderTechnique();
@@ -737,10 +757,44 @@ function gCard(key, alts, extra='') {
 
 // ── Screen 0: Power ───────────────────────────────────────────────────────────
 function renderPower() {
-  return `<div class="g-grid">
-    ${gCard('watts', alts_watts(), 'wide hero')}
-    ${gCard('pace',  [{label:'Pace',     value:()=>_s.pace??'--'}])}
-    ${gCard('spm',   [{label:'SPM',      value:()=>_s.spm??'--'}])}
+  const pace     = _s.pace         ?? '--:--';
+  const dist     = _s.distance_str ?? '--';
+  const spm      = _s.spm          ?? '--';
+  const watts    = _s.watts        ?? '--';
+  const avgWatts = (_s.avg_watts != null && _s.avg_watts > 0) ? _s.avg_watts : '--';
+  const elapsed  = _s.elapsed_str  ?? '0:00';
+  const avgPace  = _s.avg_pace     ?? '--:--';
+  const cal      = (_s.calories != null && _s.calories > 0)  ? _s.calories  : '--';
+  const calHr    = (_s.cal_hr   != null && _s.cal_hr   > 0)  ? _s.cal_hr    : '--';
+  const hr       = _s.hr_bpm       ?? '---';
+  const drag     = _s.drag_factor  ?? '--';
+  function pc(v, u) {
+    return `<div class="pw-cell"><span class="pw-v">${v}</span><span class="pw-u">${u}</span></div>`;
+  }
+  return `<div class="pw-wrap">
+    <div class="pw-col">
+      ${pc(dist,     'm')}
+      ${pc(spm,      's/m')}
+      ${pc(watts,    'watts')}
+      ${pc(avgWatts, 'ave<br>watts')}
+    </div>
+    <div class="pw-col">
+      <div class="pw-hero">
+        <span class="pw-v">${pace}</span>
+        <span class="pw-u">/500 m</span>
+      </div>
+      <div class="pw-bot">
+        ${pc(avgPace, 'ave<br>/500m')}
+        ${pc(elapsed, 'time')}
+      </div>
+    </div>
+    <div class="pw-col">
+      ${pc(cal,   'cal')}
+      ${pc(calHr, 'cal/hr')}
+      ${pc('--',  'proj<br>finish')}
+      ${pc(hr,    '&#9829;')}
+      ${pc(drag,  'drag<br>factor')}
+    </div>
   </div>`;
 }
 
