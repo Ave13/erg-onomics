@@ -220,6 +220,21 @@ def api_state():
         s["interval_total"] = 0
         s["interval_target_spm"] = s["interval_target_hr_zone"] = s["interval_target_watts"] = None
         s["interval_goal_type"] = s["interval_goal_value"] = s["interval_rest_secs"] = None
+    # Derived aggregate fields for Power screen
+    dist = s.get("distance", 0)
+    if dist > 0 and elapsed > 0:
+        avg_pace_sec = elapsed * 500 / dist
+        s["avg_pace"] = f"{int(avg_pace_sec // 60)}:{int(avg_pace_sec % 60):02d}"
+        avg_watts = round(2.80 / (avg_pace_sec / 500) ** 3) if avg_pace_sec > 0 else 0
+        s["avg_watts"] = avg_watts
+        cal_hr = round(4 * avg_watts + 300)
+        s["cal_hr"] = cal_hr
+        s["calories"] = round(cal_hr * elapsed / 3600)
+    else:
+        s["avg_pace"] = "--:--"
+        s["avg_watts"] = 0
+        s["cal_hr"] = 0
+        s["calories"] = 0
     return JSONResponse(s)
 
 
