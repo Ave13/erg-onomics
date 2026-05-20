@@ -63,6 +63,23 @@ def _hr(bpm: int) -> bytes:
     return bytes([0x00, bpm & 0xFF])
 
 
+def _mock_fc(peak_n10: int, avg_n10: int, stroke_n: int) -> None:
+    """Simulate CE06003D force curve data: 18 samples via beta model + noise."""
+    peak  = peak_n10 / 10.0
+    avg   = avg_n10  / 10.0
+    ratio = avg / peak if peak > 0 else 0.65
+    a = 1.5
+    b = 1.5 + (1.0 - ratio) * 4.0
+    raw = [math.pow(max(0, t / 17), a) * math.pow(max(0, 1 - t / 17), b)
+           for t in range(18)]
+    mx = max(raw) or 1.0
+    # small deterministic per-sample noise so the curve looks hand-drawn
+    state["force_curve_data"] = [
+        round(raw[i] / mx * peak * (1.0 + 0.03 * math.sin(stroke_n * 3.7 + i * 2.3)), 1)
+        for i in range(18)
+    ]
+
+
 def _mock_loop():
     global _running
     state["ble_status"]     = "connected"
@@ -116,6 +133,7 @@ def _mock_loop():
                     drive_cm, _DRIVE_TICKS, _REC_TICKS, stroke_cm2,
                     peak_n10, avg_n10, _WORK_J10, n,
                 ))
+                _mock_fc(peak_n10, avg_n10, n)
                 if n % 2 == 0:
                     parse_heart_rate(_hr(_HR_BASE + n % 8))
 
