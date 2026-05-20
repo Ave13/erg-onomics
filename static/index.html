@@ -990,15 +990,26 @@ function drawForce() {
     ctx.fillText('Ideal  ' + Math.round(expPk) + 'N', xPx(0.40), yPx(expPk) - 4);
   }
 
-  // Actual drive curve
-  if (peak > 20 && avg > 0) {
-    const ratio  = avg / peak;
-    const pkAvg  = peak / avg;
-    const color  = pkAvg <= 1.75 ? '#2ECC71'
-                 : pkAvg <= 2.10 ? '#F39C12'
-                 : '#E74C3C';
-    const apts = genCurve(t => actualShape(t, ratio), peak);
-    const grad = ctx.createLinearGradient(0, yPx(peak), 0, yPx(0));
+  // Actual drive curve — live samples from CE06003D, or beta synthesis fallback
+  const fcLive = Array.isArray(_s.force_curve_data) && _s.force_curve_data.length > 3;
+  if (fcLive || (peak > 20 && avg > 0)) {
+    const pkAvg = peak > 0 && avg > 0 ? peak / avg : 1.8;
+    const color = pkAvg <= 1.75 ? '#2ECC71'
+                : pkAvg <= 2.10 ? '#F39C12'
+                : '#E74C3C';
+
+    let apts, peakPt;
+    if (fcLive) {
+      const fd = _s.force_curve_data;
+      apts = fd.map((n, i) => ({ x: xPx(i / (fd.length - 1)), y: yPx(n) }));
+      const peakIdx = fd.reduce((mi, v, i) => v > fd[mi] ? i : mi, 0);
+      peakPt = apts[peakIdx];
+    } else {
+      apts = genCurve(t => actualShape(t, avg / peak), peak);
+      peakPt = apts[Math.round(0.35 * (apts.length - 1))];
+    }
+
+    const grad = ctx.createLinearGradient(0, yPx(peak || 1), 0, yPx(0));
     grad.addColorStop(0,   color + '55');
     grad.addColorStop(0.6, color + '1A');
     grad.addColorStop(1,   color + '00');
@@ -1008,27 +1019,34 @@ function drawForce() {
     ctx.strokeStyle = color;
     ctx.lineWidth   = 2.5;
     ctx.stroke(curvePath(apts));
-    ctx.save();
-    ctx.setLineDash([3, 4]);
-    ctx.strokeStyle = color + 'AA';
-    ctx.lineWidth   = 1;
+    if (avg > 0) {
+      ctx.save();
+      ctx.setLineDash([3, 4]);
+      ctx.strokeStyle = color + 'AA';
+      ctx.lineWidth   = 1;
+      ctx.beginPath();
+      ctx.moveTo(xPx(0), yPx(avg));
+      ctx.lineTo(xPx(1), yPx(avg));
+      ctx.stroke();
+      ctx.restore();
+    }
     ctx.beginPath();
-    ctx.moveTo(xPx(0), yPx(avg));
-    ctx.lineTo(xPx(1), yPx(avg));
-    ctx.stroke();
-    ctx.restore();
-    const pi  = Math.round(0.35 * (apts.length - 1));
-    const ppt = apts[pi];
-    ctx.beginPath();
-    ctx.arc(ppt.x, ppt.y, 4, 0, Math.PI * 2);
+    ctx.arc(peakPt.x, peakPt.y, 4, 0, Math.PI * 2);
     ctx.fillStyle = color;
     ctx.fill();
     ctx.font      = 'bold 12px -apple-system,sans-serif';
     ctx.fillStyle = color;
     ctx.fillText(Math.round(peak) + 'N', pad.l + 2, pad.t + 13);
+    if (avg > 0) {
+      ctx.font      = '10px -apple-system,sans-serif';
+      ctx.fillStyle = color + 'BB';
+      ctx.fillText('avg ' + Math.round(avg) + 'N', pad.l + 2, yPx(avg) - 4);
+    }
     ctx.font      = '10px -apple-system,sans-serif';
-    ctx.fillStyle = color + 'BB';
-    ctx.fillText('avg ' + Math.round(avg) + 'N', pad.l + 2, yPx(avg) - 4);
+    ctx.fillStyle = fcLive ? '#2ECC71AA' : 'rgba(140,145,180,0.6)';
+    ctx.textAlign = 'right';
+    ctx.fillText(fcLive ? '● live' : 'est.', xPx(1), pad.t + 13);
+    ctx.textAlign = 'left';
   } else {
     ctx.fillStyle = 'rgba(100,110,160,0.35)';
     ctx.font      = '13px -apple-system,sans-serif';
