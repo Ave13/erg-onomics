@@ -682,8 +682,14 @@ function renderScreen() {
     else {
       const sp = document.getElementById('fc-peak-val');
       const sa = document.getElementById('fc-avg-val');
+      const sr = document.getElementById('fc-ratio-val');
+      const sc = document.getElementById('fc-ratio-coach');
+      const sd = document.getElementById('fc-ratio-card');
       if (sp) sp.textContent = fmtN(_s.peak_force_n);
       if (sa) sa.textContent = fmtN(_s.avg_force_n);
+      if (sr) sr.textContent = peakRatioVal();
+      if (sc) sc.textContent = peakRatioCoach();
+      if (sd) { const rc = peakRatioClass(); sd.className = 'g-card wide' + (rc ? ' val-'+rc : ''); }
     }
     requestAnimationFrame(drawForce);
     return;
@@ -855,7 +861,7 @@ function deltaClass() {
   return Math.abs(dl - ex) <= 15 ? 'good' : 'warn';
 }
 function fmtN(v) { return v != null ? Math.round(v)+'N' : '--'; }
-function peakRatio() {
+function peakRatioVal() {
   const p = _s.peak_force_n, a = _s.avg_force_n;
   if (!p || !a || a === 0) return '--';
   return (p/a).toFixed(2);
@@ -863,8 +869,16 @@ function peakRatio() {
 function peakRatioClass() {
   const p = _s.peak_force_n, a = _s.avg_force_n;
   if (!p || !a) return '';
-  const r = p/a;
-  return r >= 1.3 && r <= 1.8 ? 'good' : r > 2.0 ? 'bad' : 'warn';
+  const r = p / a;
+  return r <= 1.75 ? 'good' : r <= 2.10 ? 'warn' : 'bad';
+}
+function peakRatioCoach() {
+  const p = _s.peak_force_n, a = _s.avg_force_n;
+  if (!p || !a) return '';
+  const r = p / a;
+  return r <= 1.75 ? 'Sustained drive'
+       : r <= 2.10 ? 'Finish falling short'
+       : 'Spiky — check sequence';
 }
 function renderTechnique() {
   const rc = ratioClass();
@@ -878,6 +892,7 @@ function renderTechnique() {
 
 // ── Screen 3: Force Curve + metrics ──────────────────────────────────────────
 function renderForceCurveHTML() {
+  const rCls = peakRatioClass();
   return `<div class="g-grid">
     <div id="force-wrap" class="g-card wide">
       <div class="lbl" style="margin-bottom:6px">Drive Curve</div>
@@ -885,6 +900,11 @@ function renderForceCurveHTML() {
     </div>
     <div class="g-card"><div class="lbl">Peak Force</div><div class="val" id="fc-peak-val">${fmtN(_s.peak_force_n)}</div></div>
     <div class="g-card"><div class="lbl">Avg Force</div><div class="val" id="fc-avg-val">${fmtN(_s.avg_force_n)}</div></div>
+    <div id="fc-ratio-card" class="g-card wide${rCls ? ' val-'+rCls : ''}">
+      <div class="lbl">Peak / Avg Ratio</div>
+      <div class="val" id="fc-ratio-val">${peakRatioVal()}</div>
+      <div class="sub" id="fc-ratio-coach">${peakRatioCoach()}</div>
+    </div>
   </div>`;
 }
 function drawForce() {
@@ -938,11 +958,16 @@ function drawForce() {
     return p;
   }
 
-  // Beta distribution shape functions: f(t) = t^a * (1-t)^b
+  // Ideal: piecewise model — sine rise (legs) → plateau (trunk) → cosine fall (arms)
+  // Peak at ~33% of drive; plateau holds to ~52%; gradual fall through finish.
   function idealShape(t) {
-    return Math.pow(Math.max(0, t), 2.0) * Math.pow(Math.max(0, 1 - t), 2.8);
+    const rEnd = 0.33, pEnd = 0.52;
+    if (t <= rEnd) return Math.sin(t / rEnd * Math.PI / 2);
+    if (t <= pEnd) return 1.0 - 0.12 * ((t - rEnd) / (pEnd - rEnd));
+    return 0.88 * Math.cos((t - pEnd) / (1 - pEnd) * Math.PI / 2);
   }
 
+  // Actual: beta model — ratio=avg/peak controls post-peak fall steepness
   function actualShape(t, ratio) {
     const a = 1.5;
     const b = 1.5 + (1.0 - ratio) * 4.0;
@@ -969,9 +994,9 @@ function drawForce() {
   if (peak > 20 && avg > 0) {
     const ratio  = avg / peak;
     const pkAvg  = peak / avg;
-    const color  = pkAvg >= 1.3 && pkAvg <= 1.8 ? '#2ECC71'
-                 : pkAvg > 2.2                   ? '#E74C3C'
-                 : '#F39C12';
+    const color  = pkAvg <= 1.75 ? '#2ECC71'
+                 : pkAvg <= 2.10 ? '#F39C12'
+                 : '#E74C3C';
     const apts = genCurve(t => actualShape(t, ratio), peak);
     const grad = ctx.createLinearGradient(0, yPx(peak), 0, yPx(0));
     grad.addColorStop(0,   color + '55');
