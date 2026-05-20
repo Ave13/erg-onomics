@@ -10,6 +10,7 @@ from ble.csafe import CSAFE_TX_UUID, workout_frames  # noqa: F401
 ROWING_STATUS_UUID   = "CE060031-43E5-11E4-916C-0800200C9A66"
 ADD_STATUS_UUID      = "CE060032-43E5-11E4-916C-0800200C9A66"
 STROKE_DATA_UUID     = "CE060035-43E5-11E4-916C-0800200C9A66"
+FORCE_CURVE_UUID     = "CE06003D-43E5-11E4-916C-0800200C9A66"
 HR_UUID              = "CE06003A-43E5-11E4-916C-0800200C9A66"
 WORKOUT_SUMMARY_UUID = "CE060039-43E5-11E4-916C-0800200C9A66"
 
@@ -51,6 +52,7 @@ state = {
     # raw numeric force/drive values for force-curve screen
     "peak_force_n": None,
     "avg_force_n": None,
+    "force_curve_data": None,   # list[float] Newtons per sample from CE06003D, or None
     "drive_time_secs": None,
     "drive_length_cm_raw": None,
     "recovery_secs": None,
@@ -78,6 +80,10 @@ _EMA_ALPHA = 0.25          # smoothing factor for interval EMA
 _ema_interval_secs = None  # exponential moving average of inter-stroke interval
 _EMA_WATTS_ALPHA = 0.12    # heavy smoothing for live speed-derived watts
 _ema_watts = None
+
+# Force curve accumulation buffer (CE06003D sends multiple notifications per stroke)
+_fc_buf   = []   # accumulates uint16/10 Newton samples across notifications
+_fc_total = 0    # total notifications expected for current curve
 
 
 def speed_to_pace(speed_mm_s):
@@ -391,6 +397,39 @@ def parse_stroke_data(data):
             state["perfect_streak"] = 0
 
 
+def parse_force_curve(data):
+    """CE06003D — Force Curve Data (added in BLE spec v1.20).
+
+    Byte 0: high nibble = total notifications for this stroke's curve,
+            low nibble  = uint16 samples in this notification.
+    Byte 1: sequence number (1-indexed).
+    Bytes 2+: uint16 LE force samples; divide by 10 for Newtons.
+
+    The PM5 splits one stroke's curve across multiple 20-byte notifications.
+    We accumulate until all arrive, then publish to state["force_curve_data"].
+    """
+    global _fc_buf, _fc_total
+    if len(data) < 2:
+        return
+    header  = data[0]
+    total   = (header >> 4) & 0xF   # total notifications for this curve
+    n_samp  = header & 0xF          # samples in this notification
+    seq     = data[1]               # 1-indexed
+    if seq == 1:
+        _fc_buf   = []
+        _fc_total = total
+    samples = []
+    for i in range(n_samp):
+        offset = 2 + i * 2
+        if offset + 1 < len(data):
+            raw = int.from_bytes(data[offset:offset + 2], "little")
+            samples.append(raw / 10.0)
+    _fc_buf.extend(samples)
+    if seq >= max(_fc_total, 1):
+        state["force_curve_data"] = list(_fc_buf)
+        _fc_buf = []
+
+
 def parse_heart_rate(data):
     if len(data) < 2:
         return
@@ -562,6 +601,7 @@ async def ble_main():
                 await client.start_notify(ROWING_STATUS_UUID,   lambda s, d: parse_general_status(d))
                 await client.start_notify(ADD_STATUS_UUID,      lambda s, d: parse_add_status_1(d))
                 await client.start_notify(STROKE_DATA_UUID,     lambda s, d: parse_stroke_data(d))
+                await client.start_notify(FORCE_CURVE_UUID,     lambda s, d: parse_force_curve(d))
                 await client.start_notify(HR_UUID,              lambda s, d: parse_heart_rate(d))
                 await client.start_notify(WORKOUT_SUMMARY_UUID, lambda s, d: parse_workout_summary(d))
                 while client.is_connected:
