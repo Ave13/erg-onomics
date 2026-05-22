@@ -601,9 +601,15 @@ async def ble_main():
                 await client.start_notify(ROWING_STATUS_UUID,   lambda s, d: parse_general_status(d))
                 await client.start_notify(ADD_STATUS_UUID,      lambda s, d: parse_add_status_1(d))
                 await client.start_notify(STROKE_DATA_UUID,     lambda s, d: parse_stroke_data(d))
-                await client.start_notify(FORCE_CURVE_UUID,     lambda s, d: parse_force_curve(d))
+                try:
+                    await client.start_notify(FORCE_CURVE_UUID, lambda s, d: parse_force_curve(d))
+                except Exception:
+                    pass  # CE06003D absent on PM5v1 / older firmware — not a fatal error
                 await client.start_notify(HR_UUID,              lambda s, d: parse_heart_rate(d))
-                await client.start_notify(WORKOUT_SUMMARY_UUID, lambda s, d: parse_workout_summary(d))
+                try:
+                    await client.start_notify(WORKOUT_SUMMARY_UUID, lambda s, d: parse_workout_summary(d))
+                except Exception:
+                    pass
                 while client.is_connected:
                     global _disconnect_requested
                     if _disconnect_requested:
