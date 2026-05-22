@@ -240,6 +240,19 @@ class ResumeBody(BaseModel):
 @app.post("/api/resume-session")
 def api_resume_session(body: ResumeBody):
     reset_cues()
+    # Restore workout context so interval tracking continues correctly
+    try:
+        with sqlite3.connect("rowing.db") as conn:
+            row = conn.execute(
+                "SELECT workout_id FROM sessions WHERE id=?", (body.session_id,)
+            ).fetchone()
+        if row and row[0]:
+            state["active_workout_id"] = row[0]
+            w = get_workout(row[0])
+            if w:
+                state["active_workout_name"] = w[1]
+    except Exception:
+        pass
     start_session(resume_id=body.session_id)
     return {"ok": True}
 

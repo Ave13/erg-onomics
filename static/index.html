@@ -375,6 +375,10 @@ button.sm:active { opacity:.75; }
 
 <!-- ══ SESSION PANEL ════════════════════════════════════════════════════════ -->
 <div id="session-panel">
+  <div id="panel-ctx" style="text-align:center;margin-bottom:14px">
+    <div id="panel-state" style="font-size:15px;font-weight:700;margin-bottom:3px">Ready</div>
+    <div id="panel-detail" style="font-size:12px;color:var(--label)">Free Row</div>
+  </div>
   <div class="btn-row" style="margin-bottom:8px">
     <button class="btn btn-start"  id="btn-start" onclick="doStart();closeSessionPanel()">Start</button>
     <button class="btn btn-pause"  id="btn-pause" onclick="doPause();closeSessionPanel()">Pause</button>
@@ -382,7 +386,7 @@ button.sm:active { opacity:.75; }
   </div>
   <div class="btn-row">
     <button class="btn btn-neutral" onclick="openTargetModal();closeSessionPanel()">Target Pace</button>
-    <button class="btn btn-neutral" onclick="nav('workouts');closeSessionPanel()">Workout</button>
+    <button class="btn btn-neutral" id="btn-workout" onclick="nav('workouts');closeSessionPanel()">Workout</button>
     <button class="btn btn-neutral" onclick="closeSessionPanel()">Close</button>
   </div>
 </div>
@@ -562,6 +566,7 @@ let _s = {};             // latest server state
 let _active = false, _paused = false;
 let _resumeId = null;
 let _targetSec = null;
+let _targetRestored = false;
 let _screen = parseInt(localStorage.getItem('screen') || '0');
 let _lastScreen = -1;    // stable DOM: -1 forces rebuild on first render
 let _paceChart = null, _forceChart = null;
@@ -1157,6 +1162,33 @@ async function tick() {
     if (bs) bs.style.display = _active ? 'none' : '';
     if (bp) { bp.disabled = !_active; bp.style.display = _active ? '' : 'none'; bp.textContent = _paused ? 'Resume' : 'Pause'; }
     if (be) { be.disabled = !_active; be.style.display = _active ? '' : 'none'; }
+
+    // Session panel context strip
+    const panelState = document.getElementById('panel-state');
+    const panelDetail = document.getElementById('panel-detail');
+    if (panelState) {
+      if (_paused)      panelState.innerHTML = '<span style="color:var(--blue)">⏸ Paused</span>';
+      else if (_active) panelState.innerHTML = '<span style="color:var(--green)">⬤ Recording</span>';
+      else              panelState.textContent = 'Ready';
+    }
+    if (panelDetail) {
+      const wn = _s.active_workout_name || 'Free Row';
+      const tp = _s.target_pace_sec
+        ? ` · ${Math.floor(_s.target_pace_sec/60)}:${String(_s.target_pace_sec%60).padStart(2,'0')}/500m`
+        : '';
+      panelDetail.textContent = wn + tp;
+    }
+    // Restore target bar after page reload if server still has a target set
+    if (!_targetRestored && _s.target_pace_sec) {
+      _targetRestored = true;
+      _targetSec = _s.target_pace_sec;
+      const m = Math.floor(_targetSec/60), s2 = _targetSec % 60;
+      const tl = document.getElementById('target-label');
+      if (tl) tl.textContent = `Target: ${m}:${String(s2).padStart(2,'0')} /500m`;
+      document.getElementById('target-bar')?.classList.remove('hidden');
+    } else if (!_s.target_pace_sec) {
+      _targetRestored = true; // nothing to restore — mark done so we don't re-check
+    }
 
     // BLE status pill
     updateBlePill(_s.ble_status || 'scanning', _s.ble_name, _s.ble_devices || []);
