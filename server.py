@@ -24,7 +24,7 @@ from ble.pm5 import (
     state, start_ble, send_csafe, request_disconnect,
     start_session, stop_session, pause_session, resume_session,
     find_resumable_session, has_user_profile,
-    save_user_profile, load_user_profile,
+    save_user_profile, load_user_profile, save_target_pace,
 )
 from ble.csafe import workout_frames
 from ble.ftms import start_ftms
@@ -270,6 +270,19 @@ class ResumeBody(BaseModel):
 @app.post("/api/resume-session")
 def api_resume_session(body: ResumeBody):
     reset_cues()
+    # Restore workout context so interval tracking continues correctly
+    try:
+        with sqlite3.connect("rowing.db") as conn:
+            row = conn.execute(
+                "SELECT workout_id FROM sessions WHERE id=?", (body.session_id,)
+            ).fetchone()
+        if row and row[0]:
+            state["active_workout_id"] = row[0]
+            w = get_workout(row[0])
+            if w:
+                state["active_workout_name"] = w[1]
+    except Exception:
+        pass
     start_session(resume_id=body.session_id)
     return {"ok": True}
 
@@ -292,6 +305,7 @@ class TargetBody(BaseModel):
 @app.post("/api/target")
 def api_target(body: TargetBody):
     state["target_pace_sec"] = body.seconds
+    save_target_pace(body.seconds)
     return {"ok": True}
 
 
