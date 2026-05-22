@@ -903,6 +903,23 @@ function drawForce() {
     return Math.pow(Math.max(0, t), a) * Math.pow(Math.max(0, 1 - t), b);
   }
 
+  // Ghost curves (draw first so they sit under ideal + actual)
+  const hist = Array.isArray(_s.force_curve_history) ? _s.force_curve_history : [];
+  if (hist.length > 0 && maxN > 0) {
+    hist.forEach((samples, gi) => {
+      if (!Array.isArray(samples) || samples.length < 3) return;
+      const opacity = 0.06 + 0.08 * (gi / Math.max(hist.length - 1, 1));
+      const ghPts   = samples.map((v, i) => ({
+        x: xPx(i / (samples.length - 1)),
+        y: yPx(v)
+      }));
+      ctx.strokeStyle = `rgba(155,162,220,${opacity.toFixed(2)})`;
+      ctx.lineWidth   = 1.5;
+      ctx.setLineDash([]);
+      ctx.stroke(curvePath(ghPts));
+    });
+  }
+
   // Ideal outline
   if (expPk > 0) {
     const ipts = genCurve(idealShape, expPk);
@@ -967,18 +984,46 @@ function drawForce() {
   }
 
   ctx.setLineDash([]);
+  // Baseline
   ctx.strokeStyle = 'rgba(70,75,105,0.5)';
   ctx.lineWidth   = 1;
   ctx.beginPath();
   ctx.moveTo(xPx(0), yPx(0));
   ctx.lineTo(xPx(1), yPx(0));
   ctx.stroke();
+
+  // Phase dividers: Catch→Drive (25%), Drive→Finish (60%), Finish→Release (82%)
+  const phases = [
+    { t: 0.25, label: 'Legs' },
+    { t: 0.60, label: 'Body' },
+    { t: 0.82, label: 'Arms' },
+  ];
+  ctx.save();
+  ctx.setLineDash([3, 4]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth   = 1;
+  phases.forEach(({ t }) => {
+    ctx.beginPath();
+    ctx.moveTo(xPx(t), pad.t);
+    ctx.lineTo(xPx(t), yPx(0));
+    ctx.stroke();
+  });
+  ctx.restore();
+
+  // Phase labels along baseline
   ctx.fillStyle = 'rgba(110,115,160,0.55)';
   ctx.font      = '9px -apple-system,sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('Catch', xPx(0), H - 5);
-  ctx.textAlign = 'right';
-  ctx.fillText('Finish', xPx(1), H - 5);
+  const phaseSections = [
+    { from: 0,    to: 0.25, label: 'Catch' },
+    { from: 0.25, to: 0.60, label: 'Drive' },
+    { from: 0.60, to: 0.82, label: 'Finish' },
+    { from: 0.82, to: 1.00, label: 'Recovery' },
+  ];
+  phaseSections.forEach(({ from, to, label }) => {
+    const mid = (from + to) / 2;
+    ctx.textAlign = 'center';
+    ctx.fillText(label, xPx(mid), H - 5);
+  });
   ctx.textAlign = 'left';
 }
 
