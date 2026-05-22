@@ -17,7 +17,8 @@ html,body { height:100%; background:var(--bg); color:var(--value);
             font-family:-apple-system,sans-serif; overflow:hidden; }
 
 /* ── Top nav ── */
-#nav { display:flex; background:var(--card); border-bottom:1px solid #2a2b3a; flex-shrink:0; }
+#nav { display:flex; background:var(--card); border-bottom:1px solid #2a2b3a; flex-shrink:0;
+       padding-top:env(safe-area-inset-top); }
 #nav button { flex:1; height:50px; background:none; border:none; color:var(--label);
               font-size:14px; font-weight:600; cursor:pointer; }
 #nav button.active { color:var(--value); border-bottom:2px solid var(--blue); }
