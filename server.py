@@ -22,7 +22,7 @@ from ble.pm5 import (
     state, start_ble,
     start_session, stop_session, pause_session, resume_session,
     find_resumable_session, has_user_profile,
-    save_user_profile, load_user_profile,
+    save_user_profile, load_user_profile, save_target_pace,
 )
 from ble.ftms import start_ftms
 from ui.audio import check_and_cue, reset_cues
@@ -275,6 +275,7 @@ class TargetBody(BaseModel):
 @app.post("/api/target")
 def api_target(body: TargetBody):
     state["target_pace_sec"] = body.seconds
+    save_target_pace(body.seconds)
     return {"ok": True}
 
 

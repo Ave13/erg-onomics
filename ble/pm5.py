@@ -132,6 +132,11 @@ def _init_db():
                 "dob TEXT, "
                 "created_at REAL)"
             )
+            # Add target_pace_sec if upgrading from older schema
+            try:
+                conn.execute("ALTER TABLE user_profile ADD COLUMN target_pace_sec INTEGER")
+            except Exception:
+                pass
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS stroke_log ("
                 "id INTEGER PRIMARY KEY, "
@@ -224,17 +229,34 @@ def load_user_profile():
     try:
         with sqlite3.connect(_DB_PATH) as conn:
             row = conn.execute(
-                "SELECT id, name, weight_kg, height_cm "
+                "SELECT id, name, weight_kg, height_cm, target_pace_sec "
                 "FROM user_profile ORDER BY id DESC LIMIT 1"
             ).fetchone()
         if row:
-            uid, name, weight_kg, height_cm = row
+            uid, name, weight_kg, height_cm, tgt = row
             state["user_id"]         = uid
             state["user_name"]       = name or ""
             state["user_weight_kg"]  = weight_kg
             state["user_height_cm"]  = height_cm
             state["expected_drive_cm"] = round(height_cm * 0.50)
             state["expected_peak_n"]   = round(weight_kg * 4.5)
+            if tgt is not None:
+                state["target_pace_sec"] = tgt
+    except Exception:
+        pass
+
+
+def save_target_pace(seconds):
+    """Persist target pace to the user profile row so it survives server restarts."""
+    uid = state.get("user_id")
+    if not uid:
+        return
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            conn.execute(
+                "UPDATE user_profile SET target_pace_sec=? WHERE id=?",
+                (seconds, uid)
+            )
     except Exception:
         pass
 
