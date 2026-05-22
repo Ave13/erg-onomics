@@ -553,7 +553,7 @@ button.sm:active { opacity:.75; }
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
 <script>
 // ── Constants ────────────────────────────────────────────────────────────────
-const SCREENS = ['Power','Endurance','Technique','Force Curve','Intervals','Video'];
+const SCREENS = ['Power','Endurance','Technique','Force Curve','Stroke Timing','Intervals','Video'];
 const ZONE_COLORS = ['#4d8cd8','#33bf72','#f2bf19','#f27219','#e53333'];
 const TANAKA_MAX_HR = (dob) => {
   if (!dob) return 185;
@@ -655,15 +655,22 @@ function renderScreen() {
     return;
   }
 
-  // Screen 4 — Intervals: stable DOM for progress bar transition
+  // Screen 4 — Stroke Timing: rebuilds each tick (no stateful elements)
   if (_screen === 4) {
+    if (changed) { w.innerHTML = renderStrokeTiming(); bindFlipCards(); }
+    else _updateStrokeTimingInPlace();
+    return;
+  }
+
+  // Screen 5 — Intervals: stable DOM for progress bar transition
+  if (_screen === 5) {
     if (changed) { w.innerHTML = renderIntervals(); bindFlipCards(); }
     else _updateIntervalsInPlace();
     return;
   }
 
-  // Screen 5 — Video: stable camera + canvas DOM
-  if (_screen === 5) {
+  // Screen 6 — Video: stable camera + canvas DOM
+  if (_screen === 6) {
     if (changed) { w.innerHTML = renderVideoHTML(); initCamera(); }
     else _updateAnglePills();
     requestAnimationFrame(drawSkeleton);
@@ -1027,7 +1034,66 @@ function drawForce() {
   ctx.textAlign = 'left';
 }
 
-// ── Screen 4: Intervals ───────────────────────────────────────────────────────
+// ── Screen 4: Stroke Timing ───────────────────────────────────────────────────
+function _strokeTimingRatioBar() {
+  const dt = parseFloat(_s.drive_time_secs) || 0;
+  const rt = parseFloat(_s.recovery_secs)   || 0;
+  const total = dt + rt;
+  if (total < 0.1) {
+    return `<div style="height:28px;border-radius:8px;background:#2a2b3a;display:flex;
+                        align-items:center;justify-content:center;
+                        font-size:12px;color:var(--label)">Row to see stroke timing</div>`;
+  }
+  const dPct = (dt / total * 100).toFixed(1);
+  const rPct = (rt / total * 100).toFixed(1);
+  return `<div style="display:flex;height:28px;border-radius:8px;overflow:hidden;font-size:11px;font-weight:700">
+    <div style="flex:${dPct};background:#f27320;display:flex;align-items:center;
+                justify-content:center;color:#fff;min-width:28px">Drive</div>
+    <div style="flex:${rPct};background:#2e8cd9;display:flex;align-items:center;
+                justify-content:center;color:#fff;min-width:36px">Recovery</div>
+  </div>`;
+}
+
+function renderStrokeTiming() {
+  const dt   = _s.drive_time    ?? '--';
+  const rt   = _s.recovery_time ?? '--';
+  const ratio = (() => {
+    const d = parseFloat(_s.drive_time_secs), r = parseFloat(_s.recovery_secs);
+    return (d > 0 && r > 0) ? `1:${(r/d).toFixed(1)}` : '--';
+  })();
+  const spm  = _s.spm ?? '--';
+  return `<div class="g-grid">
+    <div class="g-card wide" style="padding:10px 10px 8px">
+      <div class="lbl" style="margin-bottom:6px">Drive : Recovery</div>
+      <div id="st-ratio-bar">${_strokeTimingRatioBar()}</div>
+    </div>
+    <div class="g-card"><div class="lbl">Drive Time</div><div class="val" id="st-dt">${dt}</div></div>
+    <div class="g-card"><div class="lbl">Recovery</div><div class="val" id="st-rt">${rt}</div></div>
+    <div class="g-card"><div class="lbl">Dr:Rec Ratio</div><div class="val" id="st-ratio">${ratio}</div></div>
+    <div class="g-card"><div class="lbl">SPM</div><div class="val" id="st-spm">${spm}</div></div>
+  </div>`;
+}
+
+function _updateStrokeTimingInPlace() {
+  const dt   = _s.drive_time    ?? '--';
+  const rt   = _s.recovery_time ?? '--';
+  const ratio = (() => {
+    const d = parseFloat(_s.drive_time_secs), r = parseFloat(_s.recovery_secs);
+    return (d > 0 && r > 0) ? `1:${(r/d).toFixed(1)}` : '--';
+  })();
+  const rb = document.getElementById('st-ratio-bar');
+  const eDt = document.getElementById('st-dt');
+  const eRt = document.getElementById('st-rt');
+  const eRatio = document.getElementById('st-ratio');
+  const eSpm = document.getElementById('st-spm');
+  if (rb)     rb.innerHTML      = _strokeTimingRatioBar();
+  if (eDt)    eDt.textContent   = dt;
+  if (eRt)    eRt.textContent   = rt;
+  if (eRatio) eRatio.textContent = ratio;
+  if (eSpm)   eSpm.textContent  = _s.spm ?? '--';
+}
+
+// ── Screen 5: Intervals ───────────────────────────────────────────────────────
 function _ivTargetHtml() {
   const parts = [];
   if (_s.interval_target_spm)     parts.push(`${_s.interval_target_spm} spm`);
@@ -1987,7 +2053,7 @@ async function drawSkeleton() {
     } catch(e) {}
   }
 
-  if (_screen === 5) requestAnimationFrame(drawSkeleton);
+  if (_screen === 6) requestAnimationFrame(drawSkeleton);
 }
 
 // MoveNet COCO skeleton connections (pairs of keypoint indices)
