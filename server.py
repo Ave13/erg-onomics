@@ -222,19 +222,16 @@ def api_state():
         s["interval_goal_type"] = s["interval_goal_value"] = s["interval_rest_secs"] = None
     # Derived aggregate fields for Power screen
     dist = s.get("distance", 0)
+    avg_watts = s.get("avg_watts") or 0
     if dist > 0 and elapsed > 0:
-        avg_pace_sec = elapsed * 500 / dist
+        avg_pace_sec = elapsed * 500 / dist   # 500 / avg_speed_m_s
         s["avg_pace"] = f"{int(avg_pace_sec // 60)}:{int(avg_pace_sec % 60):02d}"
-        avg_watts = round(2.80 / (avg_pace_sec / 500) ** 3) if avg_pace_sec > 0 else 0
-        s["avg_watts"] = avg_watts
-        cal_hr = round(4 * avg_watts + 300)
-        s["cal_hr"] = cal_hr
-        s["calories"] = round(cal_hr * elapsed / 3600)
     else:
         s["avg_pace"] = "--:--"
-        s["avg_watts"] = 0
-        s["cal_hr"] = 0
-        s["calories"] = 0
+    # avg_watts comes from pm5.py: Σwork_per_stroke / elapsed (matches PM5 method)
+    cal_hr = round(4 * avg_watts + 300) if avg_watts > 0 else 0
+    s["cal_hr"] = cal_hr
+    s["calories"] = round(cal_hr * elapsed / 3600) if cal_hr > 0 else 0
     return JSONResponse(s)
 
 

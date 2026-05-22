@@ -52,6 +52,8 @@ state = {
     # raw numeric force/drive values for force-curve screen
     "peak_force_n": None,
     "avg_force_n": None,
+    "work_per_stroke_j": None,
+    "avg_watts": 0,             # session-average watts: Σwork_per_stroke / elapsed
     "force_curve_data": None,   # list[float] Newtons per sample from CE06003D, or None
     "drive_time_secs": None,
     "drive_length_cm_raw": None,
@@ -80,6 +82,7 @@ _EMA_ALPHA = 0.25          # smoothing factor for interval EMA
 _ema_interval_secs = None  # exponential moving average of inter-stroke interval
 _EMA_WATTS_ALPHA = 0.12    # heavy smoothing for live speed-derived watts
 _ema_watts = None
+_session_total_work_j = 0.0   # accumulated work this session for avg_watts
 
 # Force curve accumulation buffer (CE06003D sends multiple notifications per stroke)
 _fc_buf   = []   # accumulates uint16/10 Newton samples across notifications
@@ -363,28 +366,30 @@ def parse_stroke_data(data):
             state["pace"] = f"{int(pace_sec // 60)}:{int(pace_sec % 60):02d}"
 
     now = time.monotonic()
-    interval = None
-    if _stroke_times:
-        interval = now - _stroke_times[-1]
-        state["interval"] = f"{interval:.2f}s"
-    _stroke_times.append(now)
+    _stroke_times.append(now)  # kept only for staleness detection in _calc_spm
 
+    # SPM and interval: use CE060035-measured drive+recovery timing (matches PM5 algorithm)
+    state["interval"] = f"{stroke_period:.2f}s"
     global _ema_interval_secs
-    if interval is not None:
-        if _ema_interval_secs is None:
-            _ema_interval_secs = interval
-        else:
-            _ema_interval_secs = _EMA_ALPHA * interval + (1 - _EMA_ALPHA) * _ema_interval_secs
-
+    if _ema_interval_secs is None:
+        _ema_interval_secs = stroke_period
+    else:
+        _ema_interval_secs = _EMA_ALPHA * stroke_period + (1 - _EMA_ALPHA) * _ema_interval_secs
     state["spm"] = _calc_spm()
 
-    if interval is not None:
-        _log_stroke(
-            stroke_count, state["elapsed"], interval, state["speed_mm_s"],
-            drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n,
-            work_per_stroke_j, stroke_distance_m,
-            seat_drive_mm=state.get("seat_drive_mm"),
-        )
+    # Average watts: accumulate total work and divide by elapsed (PM5 method)
+    global _session_total_work_j
+    _session_total_work_j += work_per_stroke_j
+    elapsed = state.get("elapsed", 0)
+    if elapsed > 0:
+        state["avg_watts"] = round(_session_total_work_j / elapsed)
+
+    _log_stroke(
+        stroke_count, state["elapsed"], stroke_period, state["speed_mm_s"],
+        drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n,
+        work_per_stroke_j, stroke_distance_m,
+        seat_drive_mm=state.get("seat_drive_mm"),
+    )
 
     # Perfect-stroke streak evaluation
     if avg_force_n and avg_force_n > 0 and peak_force_n:
@@ -446,9 +451,10 @@ def parse_workout_summary(data):
 
 
 def start_session(resume_id=None, workout_id=None):
-    global _ema_interval_secs, _ema_watts
+    global _ema_interval_secs, _ema_watts, _session_total_work_j
     _ema_interval_secs = None
     _ema_watts = None
+    _session_total_work_j = 0.0
     _stroke_times.clear()
     for k in list(state.keys()):
         if k.startswith("_rest_t"):
