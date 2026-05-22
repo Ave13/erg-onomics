@@ -73,11 +73,16 @@ def _mock_fc(peak_n10: int, avg_n10: int, stroke_n: int) -> None:
     raw = [math.pow(max(0, t / 17), a) * math.pow(max(0, 1 - t / 17), b)
            for t in range(18)]
     mx = max(raw) or 1.0
-    # small deterministic per-sample noise so the curve looks hand-drawn
-    state["force_curve_data"] = [
-        round(raw[i] / mx * peak * (1.0 + 0.03 * math.sin(stroke_n * 3.7 + i * 2.3)), 1)
+    # per-sample noise so the curve looks hand-drawn and shows imperfections
+    curve = [
+        round(raw[i] / mx * peak * (1.0 + 0.04 * math.sin(stroke_n * 3.7 + i * 2.3)), 1)
         for i in range(18)
     ]
+    state["force_curve_data"]     = curve
+    state["force_curve_expected"] = 18
+    hist = state.get("force_curve_history", [])
+    hist.append(list(curve))
+    state["force_curve_history"]  = hist[-5:]
 
 
 def _mock_loop():

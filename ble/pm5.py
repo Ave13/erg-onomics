@@ -54,7 +54,9 @@ state = {
     "avg_force_n": None,
     "work_per_stroke_j": None,
     "avg_watts": 0,             # session-average watts: Σwork_per_stroke / elapsed
-    "force_curve_data": None,   # list[float] Newtons per sample from CE06003D, or None
+    "force_curve_data": None,       # list[float] Newtons, current stroke (CE06003D or partial)
+    "force_curve_expected": 0,      # estimated total samples; for x-axis during partial draw
+    "force_curve_history": [],      # list of last 5 completed force_curve_data arrays
     "drive_time_secs": None,
     "drive_length_cm_raw": None,
     "recovery_secs": None,
@@ -85,8 +87,9 @@ _ema_watts = None
 _session_total_work_j = 0.0   # accumulated work this session for avg_watts
 
 # Force curve accumulation buffer (CE06003D sends multiple notifications per stroke)
-_fc_buf   = []   # accumulates uint16/10 Newton samples across notifications
-_fc_total = 0    # total notifications expected for current curve
+_fc_buf             = []   # accumulates uint16/10 Newton samples across notifications
+_fc_total           = 0    # total notifications expected for current curve
+_fc_expected_samps  = 0    # estimated total samples for x-axis scaling during partial draw
 
 
 def speed_to_pace(speed_mm_s):
@@ -414,10 +417,11 @@ def parse_force_curve(data):
     Byte 1: sequence number (1-indexed).
     Bytes 2+: uint16 LE force samples; divide by 10 for Newtons.
 
-    The PM5 splits one stroke's curve across multiple 20-byte notifications.
-    We accumulate until all arrive, then publish to state["force_curve_data"].
+    Publishes partial data on every notification so the JS can animate the
+    curve building left-to-right during the drive. force_curve_expected gives
+    the estimated full-curve length for correct x-axis scaling of partial data.
     """
-    global _fc_buf, _fc_total
+    global _fc_buf, _fc_total, _fc_expected_samps
     if len(data) < 2:
         return
     header  = data[0]
@@ -425,8 +429,9 @@ def parse_force_curve(data):
     n_samp  = header & 0xF          # samples in this notification
     seq     = data[1]               # 1-indexed
     if seq == 1:
-        _fc_buf   = []
-        _fc_total = total
+        _fc_buf          = []
+        _fc_total        = total
+        _fc_expected_samps = n_samp * total   # estimate; assumes constant n_samp
     samples = []
     for i in range(n_samp):
         offset = 2 + i * 2
@@ -434,8 +439,14 @@ def parse_force_curve(data):
             raw = int.from_bytes(data[offset:offset + 2], "little")
             samples.append(raw / 10.0)
     _fc_buf.extend(samples)
+    # Publish partial data immediately so the curve animates during the drive
+    state["force_curve_data"]     = list(_fc_buf)
+    state["force_curve_expected"] = max(_fc_expected_samps, len(_fc_buf))
     if seq >= max(_fc_total, 1):
-        state["force_curve_data"] = list(_fc_buf)
+        # Stroke complete — push full curve to history for ghost trails
+        hist = state.get("force_curve_history", [])
+        hist.append(list(_fc_buf))
+        state["force_curve_history"] = hist[-5:]
         _fc_buf = []
 
 

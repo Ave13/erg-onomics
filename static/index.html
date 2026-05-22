@@ -145,9 +145,23 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 .pw-bot .pw-cell .pw-u { text-align:center; }
 
 /* ── Force curve screen ── */
-#force-wrap { display:flex; flex-direction:column; }
-#force-canvas { width:100%; height:180px; display:block; flex:1; }
-#fc-streak { font-size:10px; color:var(--label); margin-top:4px; text-align:right; }
+.fc-layout  { display:flex; flex-direction:column; flex:1; min-height:0; gap:7px; }
+.fc-metrics { display:grid; grid-template-columns:1fr 1fr; gap:6px; flex-shrink:0; }
+.fc-metric  { background:var(--card); border-radius:10px; padding:8px 6px; text-align:center;
+              box-shadow:0 2px 8px rgba(0,0,0,.4);
+              border-top:1px solid rgba(255,255,255,.06); }
+.fc-metric .lbl { font-size:10px; color:var(--label); text-transform:uppercase;
+                  letter-spacing:.05em; margin-bottom:2px; }
+.fc-metric .val { font-size:clamp(18px,5vw,26px); font-weight:700; }
+.fc-metric .sub { font-size:10px; color:var(--label); margin-top:2px; }
+.fc-metric.val-good .val { color:var(--green); }
+.fc-metric.val-warn .val { color:var(--yellow); }
+.fc-metric.val-bad  .val { color:var(--red); }
+#force-wrap   { flex:1; min-height:0; display:flex; flex-direction:column;
+                background:var(--card); border-radius:12px; overflow:hidden;
+                box-shadow:0 2px 10px rgba(0,0,0,.45); }
+#force-canvas { flex:1; width:100%; min-height:0; display:block; height:1px; }
+.fc-coach     { flex-shrink:0; font-size:10px; color:var(--label); text-align:center; padding:3px 8px 5px; }
 
 /* ── Intervals screen ── */
 #iv-counter { background:var(--card); border-radius:14px; padding:16px 10px;
@@ -623,6 +637,9 @@ let _lastPoseLandmarks = null;
 let _angleCache = {catch:'--', layback:'--', ratio:'--'};
 let _lastStrokeStateForAngle = -1;
 let _initCameraRunning = false;
+// Force curve ghost trail (JS-side, for beta-model fallback when CE06003D absent)
+let _fcHistory    = [];   // [{pts:[{x,y}], color}] — last 5 completed strokes
+let _fcLastStroke = -1;   // stroke_count at last history push
 // Workout builder
 let _wkIntervals = [];   // working list of interval objects
 let _wkEditIdx   = -1;   // index being edited (-1 = new interval)
@@ -686,11 +703,13 @@ function renderScreen() {
       const sr = document.getElementById('fc-ratio-val');
       const sc = document.getElementById('fc-ratio-coach');
       const sd = document.getElementById('fc-ratio-card');
+      const sw = document.getElementById('fc-wps-val');
       if (sp) sp.textContent = fmtN(_s.peak_force_n);
       if (sa) sa.textContent = fmtN(_s.avg_force_n);
       if (sr) sr.textContent = peakRatioVal();
       if (sc) sc.textContent = peakRatioCoach();
-      if (sd) { const rc = peakRatioClass(); sd.className = 'g-card wide' + (rc ? ' val-'+rc : ''); }
+      if (sd) { const rc = peakRatioClass(); sd.className = 'fc-metric' + (rc ? ' val-'+rc : ''); }
+      if (sw) sw.textContent = _s.work_per_stroke_j != null ? Math.round(_s.work_per_stroke_j) + 'J' : '--';
     }
     requestAnimationFrame(drawForce);
     return;
@@ -894,17 +913,30 @@ function renderTechnique() {
 // ── Screen 3: Force Curve + metrics ──────────────────────────────────────────
 function renderForceCurveHTML() {
   const rCls = peakRatioClass();
-  return `<div class="g-grid">
-    <div id="force-wrap" class="g-card wide">
-      <div class="lbl" style="margin-bottom:6px">Drive Curve</div>
-      <canvas id="force-canvas"></canvas>
+  const wps  = _s.work_per_stroke_j != null ? Math.round(_s.work_per_stroke_j) + 'J' : '--';
+  return `<div class="fc-layout">
+    <div class="fc-metrics">
+      <div class="fc-metric">
+        <div class="lbl">Peak Force</div>
+        <div class="val" id="fc-peak-val">${fmtN(_s.peak_force_n)}</div>
+      </div>
+      <div class="fc-metric">
+        <div class="lbl">Avg Force</div>
+        <div class="val" id="fc-avg-val">${fmtN(_s.avg_force_n)}</div>
+      </div>
+      <div id="fc-ratio-card" class="fc-metric${rCls ? ' val-'+rCls : ''}">
+        <div class="lbl">Peak / Avg</div>
+        <div class="val" id="fc-ratio-val">${peakRatioVal()}</div>
+        <div class="sub" id="fc-ratio-coach">${peakRatioCoach()}</div>
+      </div>
+      <div class="fc-metric">
+        <div class="lbl">Work / Stroke</div>
+        <div class="val" id="fc-wps-val">${wps}</div>
+      </div>
     </div>
-    <div class="g-card"><div class="lbl">Peak Force</div><div class="val" id="fc-peak-val">${fmtN(_s.peak_force_n)}</div></div>
-    <div class="g-card"><div class="lbl">Avg Force</div><div class="val" id="fc-avg-val">${fmtN(_s.avg_force_n)}</div></div>
-    <div id="fc-ratio-card" class="g-card wide${rCls ? ' val-'+rCls : ''}">
-      <div class="lbl">Peak / Avg Ratio</div>
-      <div class="val" id="fc-ratio-val">${peakRatioVal()}</div>
-      <div class="sub" id="fc-ratio-coach">${peakRatioCoach()}</div>
+    <div id="force-wrap">
+      <canvas id="force-canvas"></canvas>
+      <div class="fc-coach" id="fc-coach-lbl"></div>
     </div>
   </div>`;
 }
@@ -912,8 +944,8 @@ function drawForce() {
   const canvas = document.getElementById('force-canvas');
   if (!canvas) return;
   const rect = canvas.getBoundingClientRect();
-  const W = Math.round(rect.width) || canvas.offsetWidth || 300;
-  const H = 180;
+  const W = Math.round(rect.width)  || canvas.offsetWidth  || 300;
+  const H = Math.max(Math.round(rect.height) || canvas.offsetHeight || 180, 120);
   if (W < 10) { requestAnimationFrame(drawForce); return; }
   canvas.width  = W;
   canvas.height = H;
@@ -939,15 +971,16 @@ function drawForce() {
     return raw.map((v, i) => ({ x: xPx(i / (nPts - 1)), y: yPx(v / mx * peakForce) }));
   }
 
-  function curvePath(pts, closed) {
+  function curvePath(pts, closed, smooth) {
+    smooth = smooth || 6;
     const p = new Path2D();
     p.moveTo(pts[0].x, pts[0].y);
     for (let i = 1; i < pts.length; i++) {
       const a = pts[Math.max(0, i - 2)], b = pts[i - 1],
             c = pts[i], d = pts[Math.min(pts.length - 1, i + 1)];
       p.bezierCurveTo(
-        b.x + (c.x - a.x) / 6, b.y + (c.y - a.y) / 6,
-        c.x - (d.x - b.x) / 6, c.y - (d.y - b.y) / 6,
+        b.x + (c.x - a.x) / smooth, b.y + (c.y - a.y) / smooth,
+        c.x - (d.x - b.x) / smooth, c.y - (d.y - b.y) / smooth,
         c.x, c.y
       );
     }
@@ -958,6 +991,41 @@ function drawForce() {
     }
     return p;
   }
+
+  // ── Stroke phase separators: Legs | Trunk | Arms ─────────────────────────────
+  ctx.save();
+  ctx.setLineDash([2, 6]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  [0.35, 0.68].forEach(t => {
+    ctx.beginPath();
+    ctx.moveTo(xPx(t), pad.t);
+    ctx.lineTo(xPx(t), yPx(0));
+    ctx.stroke();
+  });
+  ctx.restore();
+  ctx.fillStyle  = 'rgba(255,255,255,0.22)';
+  ctx.font       = '8px -apple-system,sans-serif';
+  ctx.textAlign  = 'center';
+  ctx.fillText('Legs',  xPx(0.175), yPx(0) - 3);
+  ctx.fillText('Trunk', xPx(0.515), yPx(0) - 3);
+  ctx.fillText('Arms',  xPx(0.84),  yPx(0) - 3);
+  ctx.textAlign = 'left';
+
+  // ── Ghost trails: previous 5 strokes from pm5.py history or JS fallback ──────
+  const fcHist = (Array.isArray(_s.force_curve_history) && _s.force_curve_history.length > 0)
+    ? _s.force_curve_history.map(arr => arr.map((n, i) => ({ x: xPx(i / (arr.length - 1)), y: yPx(n) })))
+    : _fcHistory.map(e => e.pts);
+  fcHist.forEach((pts, i) => {
+    if (!pts || pts.length < 2) return;
+    const age = fcHist.length - 1 - i;   // 0 = newest previous stroke
+    ctx.globalAlpha = Math.max(0.05, 0.30 - age * 0.05);
+    ctx.setLineDash([]);
+    ctx.strokeStyle = (_fcHistory[i] && _fcHistory[i].color) || '#4A90E2';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke(curvePath(pts, false, 6));
+    ctx.globalAlpha = 1;
+  });
 
   // Ideal: piecewise model — sine rise (legs) → plateau (trunk) → cosine fall (arms)
   // Peak at ~33% of drive; plateau holds to ~52%; gradual fall through finish.
@@ -991,7 +1059,7 @@ function drawForce() {
     ctx.fillText('Ideal  ' + Math.round(expPk) + 'N', xPx(0.40), yPx(expPk) - 4);
   }
 
-  // Actual drive curve — live samples from CE06003D, or beta synthesis fallback
+  // Actual drive curve — live samples from CE06003D (partial or full), or beta estimate
   const fcLive = Array.isArray(_s.force_curve_data) && _s.force_curve_data.length > 3;
   if (fcLive || (peak > 20 && avg > 0)) {
     const pkAvg = peak > 0 && avg > 0 ? peak / avg : 1.8;
@@ -1001,8 +1069,12 @@ function drawForce() {
 
     let apts, peakPt;
     if (fcLive) {
-      const fd = _s.force_curve_data;
-      apts = fd.map((n, i) => ({ x: xPx(i / (fd.length - 1)), y: yPx(n) }));
+      const fd       = _s.force_curve_data;
+      const expected = (_s.force_curve_expected && _s.force_curve_expected > fd.length)
+                       ? _s.force_curve_expected : fd.length;
+      // Map each sample to its proportional x position within the expected total range.
+      // This makes the curve build left-to-right during the drive as partial data arrives.
+      apts = fd.map((n, i) => ({ x: xPx(i / (expected - 1)), y: yPx(n) }));
       const peakIdx = fd.reduce((mi, v, i) => v > fd[mi] ? i : mi, 0);
       peakPt = apts[peakIdx];
     } else {
@@ -1010,16 +1082,23 @@ function drawForce() {
       peakPt = apts[Math.round(0.35 * (apts.length - 1))];
     }
 
+    // Update JS ghost history when a new stroke completes (fallback for non-CE06003D PM5)
+    if (!fcLive && _s.stroke_count && _s.stroke_count !== _fcLastStroke && apts.length > 2) {
+      _fcLastStroke = _s.stroke_count;
+      _fcHistory.push({ pts: apts.map(p => ({x:p.x, y:p.y})), color });
+      if (_fcHistory.length > 5) _fcHistory.shift();
+    }
+
     const grad = ctx.createLinearGradient(0, yPx(peak || 1), 0, yPx(0));
     grad.addColorStop(0,   color + '55');
     grad.addColorStop(0.6, color + '1A');
     grad.addColorStop(1,   color + '00');
     ctx.fillStyle = grad;
-    ctx.fill(curvePath(apts, true));
+    ctx.fill(curvePath(apts, true, fcLive ? 3 : 6));  // less smooth for live = shows imperfections
     ctx.setLineDash([]);
     ctx.strokeStyle = color;
     ctx.lineWidth   = 2.5;
-    ctx.stroke(curvePath(apts));
+    ctx.stroke(curvePath(apts, false, fcLive ? 3 : 6));
     if (avg > 0) {
       ctx.save();
       ctx.setLineDash([3, 4]);
