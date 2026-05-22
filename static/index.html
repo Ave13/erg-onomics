@@ -969,7 +969,11 @@ function drawForce() {
   const peak  = _s.peak_force_n    || 0;
   const avg   = _s.avg_force_n     || 0;
   const expPk = _s.expected_peak_n || 220;
-  const maxN  = (peak > 20 ? peak : Math.max(expPk, 80)) * 1.2;
+  // Use actual data max when live CE06003D samples are available so the y-axis
+  // stays correct even if CE060035 peak_force_n lags by a stroke.
+  const fcData     = Array.isArray(_s.force_curve_data) ? _s.force_curve_data : [];
+  const dataPeak   = fcData.length > 0 ? Math.max(...fcData) : 0;
+  const maxN = Math.max(dataPeak > 10 ? dataPeak : 0, peak > 20 ? peak : 0, expPk, 80) * 1.2;
 
   const pad = { l:10, r:10, t:16, b:22 };
   const cW  = W - pad.l - pad.r;
@@ -1025,55 +1029,36 @@ function drawForce() {
   ctx.fillText('Recovery', xPx(0.91),  yPx(0) - 3);
   ctx.textAlign = 'left';
 
-  // ── Ghost trails: previous 5 strokes from pm5.py history or JS fallback ──────
-  const fcHist = (Array.isArray(_s.force_curve_history) && _s.force_curve_history.length > 0)
-    ? _s.force_curve_history.map(arr => arr.map((n, i) => ({ x: xPx(i / (arr.length - 1)), y: yPx(n) })))
-    : _fcHistory.map(e => e.pts);
-  fcHist.forEach((pts, i) => {
-    if (!pts || pts.length < 2) return;
-    const age = fcHist.length - 1 - i;   // 0 = newest previous stroke
-    ctx.globalAlpha = Math.max(0.05, 0.30 - age * 0.05);
-    ctx.setLineDash([]);
-    ctx.strokeStyle = (_fcHistory[i] && _fcHistory[i].color) || '#4A90E2';
-    ctx.lineWidth   = 1.5;
-    ctx.stroke(curvePath(pts, false, 6));
-    ctx.globalAlpha = 1;
-  });
-
-  // Ideal: piecewise model — sine rise (legs) → plateau (trunk) → cosine fall (arms)
-  // Peak at ~33% of drive; plateau holds to ~52%; gradual fall through finish.
   function idealShape(t) {
     const rEnd = 0.33, pEnd = 0.52;
     if (t <= rEnd) return Math.sin(t / rEnd * Math.PI / 2);
     if (t <= pEnd) return 1.0 - 0.12 * ((t - rEnd) / (pEnd - rEnd));
     return 0.88 * Math.cos((t - pEnd) / (1 - pEnd) * Math.PI / 2);
   }
-
-  // Actual: beta model — ratio=avg/peak controls post-peak fall steepness
   function actualShape(t, ratio) {
-    const a = 1.5;
-    const b = 1.5 + (1.0 - ratio) * 4.0;
+    const a = 1.5, b = 1.5 + (1.0 - ratio) * 4.0;
     return Math.pow(Math.max(0, t), a) * Math.pow(Math.max(0, 1 - t), b);
   }
 
   // Ghost curves (draw first so they sit under ideal + actual)
   const hist = Array.isArray(_s.force_curve_history) ? _s.force_curve_history : [];
-  if (hist.length > 0 && maxN > 0) {
+  if (hist.length > 0) {
     hist.forEach((samples, gi) => {
       if (!Array.isArray(samples) || samples.length < 3) return;
-      const opacity = 0.06 + 0.08 * (gi / Math.max(hist.length - 1, 1));
+      const age     = hist.length - 1 - gi;   // 0 = most recent ghost
+      const opacity = Math.max(0.05, 0.28 - age * 0.05);
       const ghPts   = samples.map((v, i) => ({
         x: xPx(i / (samples.length - 1)),
         y: yPx(v)
       }));
-      ctx.strokeStyle = `rgba(155,162,220,${opacity.toFixed(2)})`;
+      ctx.globalAlpha = opacity;
+      ctx.strokeStyle = '#4A90E2';
       ctx.lineWidth   = 1.5;
       ctx.setLineDash([]);
-      ctx.stroke(curvePath(ghPts));
+      ctx.stroke(curvePath(ghPts, false, 6));
     });
+    ctx.globalAlpha = 1;
   }
-
-  // Ideal outline
   if (expPk > 0) {
     const ipts = genCurve(idealShape, expPk);
     ctx.fillStyle = 'rgba(255,255,255,0.035)';
@@ -1090,7 +1075,7 @@ function drawForce() {
   }
 
   // Actual drive curve — live samples from CE06003D (partial or full), or beta estimate
-  const fcLive = Array.isArray(_s.force_curve_data) && _s.force_curve_data.length > 3;
+  const fcLive = fcData.length > 3;
   if (fcLive || (peak > 20 && avg > 0)) {
     const pkAvg = peak > 0 && avg > 0 ? peak / avg : 1.8;
     const color = pkAvg <= 1.75 ? '#2ECC71'
@@ -1099,13 +1084,10 @@ function drawForce() {
 
     let apts, peakPt;
     if (fcLive) {
-      const fd       = _s.force_curve_data;
-      const expected = (_s.force_curve_expected && _s.force_curve_expected > fd.length)
-                       ? _s.force_curve_expected : fd.length;
-      // Map each sample to its proportional x position within the expected total range.
-      // This makes the curve build left-to-right during the drive as partial data arrives.
-      apts = fd.map((n, i) => ({ x: xPx(i / (expected - 1)), y: yPx(n) }));
-      const peakIdx = fd.reduce((mi, v, i) => v > fd[mi] ? i : mi, 0);
+      const expected = (_s.force_curve_expected && _s.force_curve_expected > fcData.length)
+                       ? _s.force_curve_expected : fcData.length;
+      apts = fcData.map((n, i) => ({ x: xPx(i / (expected - 1)), y: yPx(n) }));
+      const peakIdx = fcData.reduce((mi, v, i) => v > fcData[mi] ? i : mi, 0);
       peakPt = apts[peakIdx];
     } else {
       apts = genCurve(t => actualShape(t, avg / peak), peak);
@@ -1165,48 +1147,6 @@ function drawForce() {
     ctx.textAlign = 'left';
   }
 
-  ctx.setLineDash([]);
-  // Baseline
-  ctx.strokeStyle = 'rgba(70,75,105,0.5)';
-  ctx.lineWidth   = 1;
-  ctx.beginPath();
-  ctx.moveTo(xPx(0), yPx(0));
-  ctx.lineTo(xPx(1), yPx(0));
-  ctx.stroke();
-
-  // Phase dividers: Catch→Drive (25%), Drive→Finish (60%), Finish→Release (82%)
-  const phases = [
-    { t: 0.25, label: 'Legs' },
-    { t: 0.60, label: 'Body' },
-    { t: 0.82, label: 'Arms' },
-  ];
-  ctx.save();
-  ctx.setLineDash([3, 4]);
-  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
-  ctx.lineWidth   = 1;
-  phases.forEach(({ t }) => {
-    ctx.beginPath();
-    ctx.moveTo(xPx(t), pad.t);
-    ctx.lineTo(xPx(t), yPx(0));
-    ctx.stroke();
-  });
-  ctx.restore();
-
-  // Phase labels along baseline
-  ctx.fillStyle = 'rgba(110,115,160,0.55)';
-  ctx.font      = '9px -apple-system,sans-serif';
-  const phaseSections = [
-    { from: 0,    to: 0.25, label: 'Catch' },
-    { from: 0.25, to: 0.60, label: 'Drive' },
-    { from: 0.60, to: 0.82, label: 'Finish' },
-    { from: 0.82, to: 1.00, label: 'Recovery' },
-  ];
-  phaseSections.forEach(({ from, to, label }) => {
-    const mid = (from + to) / 2;
-    ctx.textAlign = 'center';
-    ctx.fillText(label, xPx(mid), H - 5);
-  });
-  ctx.textAlign = 'left';
 }
 
 // ── Screen 4: Stroke Timing ───────────────────────────────────────────────────
