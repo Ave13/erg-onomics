@@ -992,24 +992,25 @@ function drawForce() {
     return p;
   }
 
-  // ── Stroke phase separators: Legs | Trunk | Arms ─────────────────────────────
+  // ── Stroke phase separators: Catch | Drive | Finish | Recovery ───────────────
   ctx.save();
   ctx.setLineDash([2, 6]);
   ctx.strokeStyle = 'rgba(255,255,255,0.1)';
   ctx.lineWidth = 1;
-  [0.35, 0.68].forEach(t => {
+  [0.25, 0.60, 0.82].forEach(t => {
     ctx.beginPath();
     ctx.moveTo(xPx(t), pad.t);
     ctx.lineTo(xPx(t), yPx(0));
     ctx.stroke();
   });
   ctx.restore();
-  ctx.fillStyle  = 'rgba(255,255,255,0.22)';
-  ctx.font       = '8px -apple-system,sans-serif';
-  ctx.textAlign  = 'center';
-  ctx.fillText('Legs',  xPx(0.175), yPx(0) - 3);
-  ctx.fillText('Trunk', xPx(0.515), yPx(0) - 3);
-  ctx.fillText('Arms',  xPx(0.84),  yPx(0) - 3);
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.font      = '8px -apple-system,sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('Catch',    xPx(0.125), yPx(0) - 3);
+  ctx.fillText('Drive',    xPx(0.425), yPx(0) - 3);
+  ctx.fillText('Finish',   xPx(0.71),  yPx(0) - 3);
+  ctx.fillText('Recovery', xPx(0.91),  yPx(0) - 3);
   ctx.textAlign = 'left';
 
   // ── Ghost trails: previous 5 strokes from pm5.py history or JS fallback ──────
@@ -1142,13 +1143,6 @@ function drawForce() {
   ctx.moveTo(xPx(0), yPx(0));
   ctx.lineTo(xPx(1), yPx(0));
   ctx.stroke();
-  ctx.fillStyle = 'rgba(110,115,160,0.55)';
-  ctx.font      = '9px -apple-system,sans-serif';
-  ctx.textAlign = 'left';
-  ctx.fillText('Catch', xPx(0), H - 5);
-  ctx.textAlign = 'right';
-  ctx.fillText('Finish', xPx(1), H - 5);
-  ctx.textAlign = 'left';
 }
 
 // ── Screen 4: Intervals ───────────────────────────────────────────────────────
