@@ -32,7 +32,7 @@ html,body { height:100%; background:var(--bg); color:var(--value);
   display: grid;
   grid-template-rows: auto auto auto auto 1fr auto;
   overflow: hidden;
-  padding: 8px 10px 0;
+  padding: 8px 10px 6px;
 }
 #page-row > #resume-prompt { grid-row: 1; }
 #page-row > #row-header    { grid-row: 2; }
@@ -103,7 +103,9 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 .tech-card:active { transform:scale(.97); transition:transform 80ms; }
 
 /* ── Unified 8-cell grid (all row screens) ── */
-.g-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px; }
+.g-grid { display:grid; grid-template-columns:1fr 1fr; gap:7px;
+          flex:1; min-height:0; overflow-y:auto; overflow-x:hidden;
+          -webkit-overflow-scrolling:touch; }
 .g-card { background:var(--card); border-radius:12px; padding:10px 8px 8px;
           text-align:center; cursor:pointer;
           box-shadow:0 2px 10px rgba(0,0,0,.45);
