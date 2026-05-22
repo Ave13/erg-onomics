@@ -353,10 +353,14 @@ def parse_stroke_data(data):
     state["drive_time_secs"]     = drive_time_secs
     state["drive_length_cm_raw"] = drive_length_cm
     state["recovery_secs"]       = recovery_secs
-    # Stroke-average watts: work / stroke_period — matches what the PM5 display shows
+    # Stroke-average watts and pace: work / stroke_period — matches PM5 display algorithm
     stroke_period = drive_time_secs + recovery_secs
     if work_per_stroke_j > 0 and stroke_period > 0:
-        state["watts"] = round(work_per_stroke_j / stroke_period)
+        watts_stroke = work_per_stroke_j / stroke_period
+        state["watts"] = round(watts_stroke)
+        if watts_stroke >= 1:
+            pace_sec = 500 * (2.80 / watts_stroke) ** (1 / 3)
+            state["pace"] = f"{int(pace_sec // 60)}:{int(pace_sec % 60):02d}"
 
     now = time.monotonic()
     interval = None
