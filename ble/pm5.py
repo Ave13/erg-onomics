@@ -85,6 +85,7 @@ _ema_interval_secs = None  # exponential moving average of inter-stroke interval
 _EMA_WATTS_ALPHA = 0.12    # heavy smoothing for live speed-derived watts
 _ema_watts = None
 _session_total_work_j = 0.0   # accumulated work this session for avg_watts
+_last_notify_t = 0.0          # monotonic time of last BLE notification (watchdog)
 
 # Force curve accumulation buffer (CE06003D sends multiple notifications per stroke)
 _fc_buf             = []   # accumulates uint16/10 Newton samples across notifications
@@ -292,8 +293,10 @@ def has_user_profile():
 
 
 def parse_general_status(data):
+    global _last_notify_t
     if len(data) < 7:
         return
+    _last_notify_t = time.monotonic()
     elapsed = int.from_bytes(data[0:3], "little") / 100
     distance = int.from_bytes(data[3:6], "little") / 10
     workout_state = data[6]
@@ -619,23 +622,40 @@ async def ble_main():
         try:
             async with BleakClient(target.address) as client:
                 state["ble_status"] = "connected"
-                await client.start_notify(ROWING_STATUS_UUID,   lambda s, d: parse_general_status(d))
-                await client.start_notify(ADD_STATUS_UUID,      lambda s, d: parse_add_status_1(d))
-                await client.start_notify(STROKE_DATA_UUID,     lambda s, d: parse_stroke_data(d))
-                try:
-                    await client.start_notify(FORCE_CURVE_UUID, lambda s, d: parse_force_curve(d))
-                except Exception:
-                    pass  # CE06003D absent on PM5v1 / older firmware — not a fatal error
-                await client.start_notify(HR_UUID,              lambda s, d: parse_heart_rate(d))
-                try:
-                    await client.start_notify(WORKOUT_SUMMARY_UUID, lambda s, d: parse_workout_summary(d))
-                except Exception:
-                    pass
+                global _last_notify_t
+                _last_notify_t = time.monotonic()   # seed watchdog clock at connect
+
+                # Each characteristic wrapped individually — a single failure must not
+                # silently drop the other subscriptions and kill the data feed.
+                for uuid, handler in [
+                    (ROWING_STATUS_UUID,   lambda s, d: parse_general_status(d)),
+                    (ADD_STATUS_UUID,      lambda s, d: parse_add_status_1(d)),
+                    (STROKE_DATA_UUID,     lambda s, d: parse_stroke_data(d)),
+                    (HR_UUID,              lambda s, d: parse_heart_rate(d)),
+                ]:
+                    try:
+                        await client.start_notify(uuid, handler)
+                    except Exception as e:
+                        print(f"[ble] start_notify {uuid[:8]} failed: {e}", flush=True)
+                for uuid, handler in [
+                    (FORCE_CURVE_UUID,     lambda s, d: parse_force_curve(d)),
+                    (WORKOUT_SUMMARY_UUID, lambda s, d: parse_workout_summary(d)),
+                ]:
+                    try:
+                        await client.start_notify(uuid, handler)
+                    except Exception:
+                        pass   # optional characteristics — absent on some firmware
+
                 while client.is_connected:
                     global _disconnect_requested
                     if _disconnect_requested:
                         _disconnect_requested = False
                         state["ble_address"] = None
+                        break
+                    # Watchdog: if no notification in 30 s the BLE stack has gone silent;
+                    # break to force a clean reconnect.
+                    if time.monotonic() - _last_notify_t > 30:
+                        print("[ble] notification watchdog triggered — reconnecting", flush=True)
                         break
                     # Drain outbound CSAFE write queue
                     while not _csafe_queue.empty():

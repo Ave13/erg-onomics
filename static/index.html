@@ -993,17 +993,15 @@ function drawForce() {
   }
 
   // ── Stroke phase separators: Catch | Drive | Finish | Recovery ───────────────
-  ctx.save();
-  ctx.setLineDash([2, 6]);
-  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
-  ctx.lineWidth = 1;
   [0.25, 0.60, 0.82].forEach(t => {
+    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(xPx(t), pad.t);
     ctx.lineTo(xPx(t), yPx(0));
     ctx.stroke();
   });
-  ctx.restore();
   ctx.fillStyle = 'rgba(255,255,255,0.22)';
   ctx.font      = '8px -apple-system,sans-serif';
   ctx.textAlign = 'center';
