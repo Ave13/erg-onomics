@@ -147,7 +147,7 @@ html,body { height:100%; background:var(--bg); color:var(--value);
 .pw-bot .pw-cell .pw-u { text-align:center; }
 
 /* ── Force curve screen ── */
-.fc-layout  { display:flex; flex-direction:column; flex:1; min-height:0; gap:7px; }
+.fc-layout  { display:flex; flex-direction:column; height:100%; min-height:0; gap:7px; }
 .fc-metrics { display:grid; grid-template-columns:1fr 1fr; gap:6px; flex-shrink:0; }
 .fc-metric  { background:var(--card); border-radius:10px; padding:8px 6px; text-align:center;
               box-shadow:0 2px 8px rgba(0,0,0,.4);
@@ -975,7 +975,9 @@ function drawForce() {
   // stays correct even if CE060035 peak_force_n lags by a stroke.
   const fcData     = Array.isArray(_s.force_curve_data) ? _s.force_curve_data : [];
   const dataPeak   = fcData.length > 0 ? Math.max(...fcData) : 0;
-  const maxN = Math.max(dataPeak > 10 ? dataPeak : 0, peak > 20 ? peak : 0, expPk, 80) * 1.2;
+  // Scale y-axis to actual force data when available; expPk only used when no real data
+  const actualPeak = Math.max(dataPeak > 10 ? dataPeak : 0, peak > 20 ? peak : 0);
+  const maxN = (actualPeak > 0 ? Math.max(actualPeak, 80) : Math.max(expPk, 80)) * 1.2;
 
   const pad = { l:10, r:10, t:16, b:22 };
   const cW  = W - pad.l - pad.r;
