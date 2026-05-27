@@ -453,7 +453,7 @@ def parse_force_curve(data):
         offset = 2 + i * 2
         if offset + 1 < len(data):
             raw = int.from_bytes(data[offset:offset + 2], "little")
-            samples.append(raw / 10.0)
+            samples.append(raw * 0.5)   # CE06003D encodes force in 0.5 N units
     _fc_buf.extend(samples)
     # Publish partial data immediately so the curve animates during the drive
     state["force_curve_data"]     = list(_fc_buf)
