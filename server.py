@@ -561,13 +561,24 @@ class SelectWorkout(BaseModel):
 def api_select_workout(body: SelectWorkout):
     state["active_workout_id"]   = body.workout_id
     state["active_workout_name"] = body.workout_name
-    # Sync workout to PM5 over BLE (no-op if disconnected or mock)
-    if state.get("ble_status") == "connected" and not os.environ.get("MOCK_BLE"):
-        w = get_workout(body.workout_id)
-        if w:
-            intervals = w[2].get("intervals", [])
-            send_csafe(workout_frames(intervals))
+    # NOTE: does NOT auto-push to PM5. Use POST /api/workouts/sync-to-pm5 explicitly.
     return {"ok": True}
+
+
+@app.post("/api/workouts/sync-to-pm5")
+def api_sync_workout_to_pm5():
+    """Explicitly push the currently selected workout to the PM5 over CSAFE."""
+    wid = state.get("active_workout_id")
+    if not wid:
+        raise HTTPException(status_code=400, detail="No workout selected")
+    if state.get("ble_status") != "connected":
+        raise HTTPException(status_code=400, detail="PM5 not connected")
+    w = get_workout(wid)
+    if not w:
+        raise HTTPException(status_code=404, detail="Workout not found")
+    intervals = w[2].get("intervals", [])
+    send_csafe(workout_frames(intervals))
+    return {"ok": True, "synced": wid}
 
 
 @app.get("/api/workouts/{workout_id}")
