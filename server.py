@@ -6,6 +6,7 @@ Run:
 
 Open http://erg.local:8501 (home WiFi) or http://10.0.0.1:8501 (ErgRower AP).
 """
+import json
 import os
 import sqlite3
 import subprocess
@@ -465,7 +466,7 @@ def api_strokes(session_id: int):
         rows = conn.execute(
             "SELECT elapsed_secs, speed_mm_s, drive_length_cm, drive_time_secs, "
             "       recovery_secs, peak_force_n, avg_force_n, "
-            "       watts, peak_avg_ratio, hr_bpm, logged_at "
+            "       watts, peak_avg_ratio, hr_bpm, logged_at, force_curve_json "
             "FROM stroke_log WHERE session_id=? ORDER BY elapsed_secs",
             (session_id,)
         ).fetchall()
@@ -482,6 +483,7 @@ def api_strokes(session_id: int):
             "peak_avg_ratio": r[8],
             "hr_bpm":        r[9],
             "logged_at":     r[10],
+            "force_curve":   json.loads(r[11]) if r[11] else None,
         }
         for r in rows
     ]

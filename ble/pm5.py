@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import json
 import queue as _queue
 import sqlite3
 import time
@@ -125,6 +126,8 @@ def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
     # Derived correlation metrics
     watts = round(2.80 / (500_000 / speed_mm_s / 500) ** 3) if speed_mm_s > 0 else None
     peak_avg_ratio = round(peak_force_n / avg_force_n, 3) if (peak_force_n and avg_force_n and avg_force_n > 0) else None
+    fc = state.get("force_curve_data")
+    force_curve_json = json.dumps(fc) if isinstance(fc, list) and fc else None
     try:
         with sqlite3.connect(_DB_PATH) as conn:
             conn.execute(
@@ -132,14 +135,14 @@ def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
                 "(stroke_num, elapsed_secs, interval_secs, speed_mm_s, logged_at, "
                 " drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n, "
                 " session_id, hr_bpm, work_per_stroke_j, stroke_distance_m, "
-                " watts, peak_avg_ratio, seat_drive_mm) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " watts, peak_avg_ratio, seat_drive_mm, force_curve_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (stroke_num, elapsed_secs, round(interval_secs, 4), speed_mm_s, time.time(),
                  drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n,
                  state["session_id"],
                  state["hr_bpm"] if isinstance(state["hr_bpm"], int) else None,
                  work_per_stroke_j, stroke_distance_m,
-                 watts, peak_avg_ratio, seat_drive_mm),
+                 watts, peak_avg_ratio, seat_drive_mm, force_curve_json),
             )
     except Exception:
         pass
@@ -178,7 +181,8 @@ def _init_db():
                 "session_id INTEGER, "
                 "hr_bpm INTEGER, "
                 "work_per_stroke_j REAL, "
-                "stroke_distance_m REAL)"
+                "stroke_distance_m REAL, "
+                "force_curve_json TEXT)"
             )
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS sessions ("
@@ -214,6 +218,7 @@ def _init_db():
                 ("stroke_log", "arm_break_pct",      "REAL"),  # % through drive when arms bend
                 ("stroke_log", "video_ts",           "REAL"),  # wall-clock time of matching frame
                 ("stroke_log", "seat_drive_mm",      "INTEGER"),
+                ("stroke_log", "force_curve_json",   "TEXT"),
                 ("sessions",   "user_id",            "INTEGER"),
                 ("sessions",   "workout_id",         "INTEGER"),
                 ("sessions",   "started_at",         "REAL"),
@@ -476,6 +481,7 @@ def parse_force_curve(data):
 
 
 def parse_heart_rate(data):
+    print(f"[hr] notify len={len(data)} raw={list(data)}", flush=True)
     if len(data) < 2:
         return
     hr = int.from_bytes(data[1:3], "little") if data[0] & 0x01 else data[1]
@@ -492,6 +498,7 @@ def start_session(resume_id=None, workout_id=None):
     _ema_watts = None
     _session_total_work_j = 0.0
     _stroke_times.clear()
+    state["force_curve_data"] = None  # don't carry previous session's curve into first stroke
     for k in list(state.keys()):
         if k.startswith("_rest_t"):
             del state[k]
