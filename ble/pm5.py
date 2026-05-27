@@ -85,7 +85,6 @@ _EMA_ALPHA = 0.25          # smoothing factor for interval EMA
 _ema_interval_secs = None  # exponential moving average of inter-stroke interval
 _EMA_WATTS_ALPHA = 0.12    # heavy smoothing for live speed-derived watts
 _ema_watts = None
-_session_total_work_j = 0.0   # accumulated work this session for avg_watts
 _last_notify_t = 0.0          # monotonic time of last BLE notification (watchdog)
 
 # Force curve accumulation buffer (CE06003D sends multiple notifications per stroke)
@@ -390,14 +389,7 @@ def parse_stroke_data(data):
     state["drive_time_secs"]     = drive_time_secs
     state["drive_length_cm_raw"] = drive_length_cm
     state["recovery_secs"]       = recovery_secs
-    # Stroke-average watts and pace: work / stroke_period — matches PM5 display algorithm
     stroke_period = drive_time_secs + recovery_secs
-    if work_per_stroke_j > 0 and stroke_period > 0:
-        watts_stroke = work_per_stroke_j / stroke_period
-        state["watts"] = round(watts_stroke)
-        if watts_stroke >= 1:
-            pace_sec = 500 * (2.80 / watts_stroke) ** (1 / 3)
-            state["pace"] = f"{int(pace_sec // 60)}:{int(pace_sec % 60):02d}"
 
     now = time.monotonic()
     _stroke_times.append(now)  # kept only for staleness detection in _calc_spm
@@ -410,13 +402,6 @@ def parse_stroke_data(data):
     else:
         _ema_interval_secs = _EMA_ALPHA * stroke_period + (1 - _EMA_ALPHA) * _ema_interval_secs
     state["spm"] = _calc_spm()
-
-    # Average watts: accumulate total work and divide by elapsed (PM5 method)
-    global _session_total_work_j
-    _session_total_work_j += work_per_stroke_j
-    elapsed = state.get("elapsed", 0)
-    if elapsed > 0:
-        state["avg_watts"] = round(_session_total_work_j / elapsed)
 
     _log_stroke(
         stroke_count, state["elapsed"], stroke_period, state["speed_mm_s"],
@@ -494,10 +479,9 @@ def parse_workout_summary(data):
 
 
 def start_session(resume_id=None, workout_id=None):
-    global _ema_interval_secs, _ema_watts, _session_total_work_j
+    global _ema_interval_secs, _ema_watts
     _ema_interval_secs = None
     _ema_watts = None
-    _session_total_work_j = 0.0
     _stroke_times.clear()
     state["force_curve_data"] = None  # don't carry previous session's curve into first stroke
     for k in list(state.keys()):
