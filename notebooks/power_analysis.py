@@ -184,3 +184,75 @@ if df[["drive_time", "recovery"]].notna().all(axis=None):
     fig5.update_layout(barmode="stack", xaxis_title="Elapsed (min)",
                        yaxis_title="Seconds", height=280, margin=dict(t=20, b=40))
     st.plotly_chart(fig5, use_container_width=True)
+
+# ── Force curve player ────────────────────────────────────────────────────────
+
+st.divider()
+st.subheader("Force Curve Player")
+
+curves_df = df[df["force_curve"].notna()].reset_index(drop=True) if "force_curve" in df.columns else pd.DataFrame()
+
+if curves_df.empty:
+    st.info("No force curve data in this session. Sessions recorded after the CE06003D upgrade will include full curves.")
+else:
+    n_curves = len(curves_df)
+    stroke_idx = st.slider("Stroke", min_value=1, max_value=n_curves, value=1,
+                           format="Stroke %d") - 1
+    row = curves_df.iloc[stroke_idx]
+    pts = row["force_curve"]  # list of floats in Newtons
+
+    # X-axis: distribute samples evenly across drive length (if available), else sample index
+    dl_m = (row["drive_length"] / 100.0) if pd.notna(row.get("drive_length")) else None
+    if dl_m and dl_m > 0:
+        xs = [dl_m * i / max(len(pts) - 1, 1) for i in range(len(pts))]
+        x_label = "Drive position (m)"
+    else:
+        xs = list(range(len(pts)))
+        x_label = "Sample index"
+
+    max_n = max(pts) if pts else 1
+    avg_n = row.get("avg_force_n")
+    peak_n = row.get("peak_force_n")
+
+    fig6 = go.Figure([
+        go.Scatter(
+            x=xs, y=pts,
+            mode="lines",
+            fill="tozeroy",
+            fillcolor="rgba(99,110,250,0.15)",
+            line=dict(color="rgba(99,110,250,1)", width=2),
+            name="Force",
+            hovertemplate=f"{x_label.split()[0]} %{{x:.2f}} — %{{y:.0f}} N<extra></extra>",
+        ),
+    ])
+    if pd.notna(avg_n):
+        fig6.add_hline(y=avg_n, line_dash="dash", line_color="steelblue",
+                       annotation_text=f"Avg {avg_n:.0f} N", annotation_position="top left")
+    if pd.notna(peak_n):
+        fig6.add_hline(y=peak_n, line_dash="dot", line_color="crimson",
+                       annotation_text=f"Peak {peak_n:.0f} N", annotation_position="top right")
+    fig6.update_layout(
+        xaxis_title=x_label,
+        yaxis_title="Force (N)",
+        yaxis=dict(range=[0, max_n * 1.15]),
+        height=340, margin=dict(t=20, b=40),
+        showlegend=False,
+    )
+    st.plotly_chart(fig6, use_container_width=True)
+
+    # Stroke metadata
+    elapsed_str = f"{int(row['elapsed'])//60}:{int(row['elapsed'])%60:02d}" if pd.notna(row.get("elapsed")) else "--"
+    drive_str   = f"{row['drive_time']:.2f} s" if pd.notna(row.get("drive_time")) else "--"
+    rec_str     = f"{row['recovery']:.2f} s" if pd.notna(row.get("recovery")) else "--"
+    dl_str      = f"{dl_m:.2f} m" if dl_m else "--"
+    ratio_str   = f"{row['peak_avg_ratio']:.2f}" if pd.notna(row.get("peak_avg_ratio")) else "--"
+    mcols = st.columns(6)
+    for col, (label, val) in zip(mcols, [
+        ("Stroke #", f"{stroke_idx + 1} / {n_curves}"),
+        ("Elapsed",  elapsed_str),
+        ("Drive",    drive_str),
+        ("Recovery", rec_str),
+        ("Length",   dl_str),
+        ("Peak/Avg", ratio_str),
+    ]):
+        col.metric(label, val)
