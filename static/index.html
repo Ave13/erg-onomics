@@ -429,6 +429,10 @@ button.sm:active { opacity:.75; }
     <button id="btn-demo" class="btn btn-neutral" onclick="toggleDemo()">Demo Mode</button>
     <button id="btn-disconnect" class="btn btn-neutral" onclick="doDisconnect();closeSessionPanel()" style="display:none">Disconnect Erg</button>
   </div>
+  <div class="btn-row" id="video-record-row" style="margin-top:4px">
+    <button id="btn-record-video" class="btn btn-neutral" onclick="toggleRecordVideo()"
+            style="grid-column:1/-1">📹 Video: OFF</button>
+  </div>
 </div>
 
 <!-- ══ HISTORY PAGE ══════════════════════════════════════════════════════════ -->
@@ -634,7 +638,10 @@ let _bleDevices = [];
 let _bleAddress = localStorage.getItem('bleAddress') || null;
 let _bleConnecting = false;
 // Video / pose
-let _cameraStream = null;
+let _cameraStream    = null;
+let _mediaRecorder   = null;
+let _videoChunks     = [];
+let _recordVideo     = false;
 let _poseDetector = null;
 let _tfLoaded = false;
 let _ghostOn = false;
@@ -1392,6 +1399,8 @@ async function tick() {
     if (bs) bs.style.display = _active ? 'none' : '';
     if (bp) { bp.disabled = !_active; bp.style.display = _active ? '' : 'none'; bp.textContent = _paused ? 'Resume' : 'Pause'; }
     if (be) { be.disabled = !_active; be.style.display = _active ? '' : 'none'; }
+    const vrr = document.getElementById('video-record-row');
+    if (vrr) vrr.style.display = _active ? 'none' : '';
 
     // Demo button label
     const bd = document.getElementById('btn-demo');
@@ -1470,12 +1479,17 @@ _acquireWakeLock();
 // ── Session controls ──────────────────────────────────────────────────────────
 async function doStart() {
   await fetch('/api/start', {method:'POST'});
+  if (_recordVideo) await startVideoRecording();
 }
 async function doPause() {
   await fetch(_paused ? '/api/resume' : '/api/pause', {method:'POST'});
 }
 async function doEnd() {
   const res = await fetch('/api/end', {method:'POST'}).then(r => r.json());
+  if (_mediaRecorder) await stopVideoRecording(res.session_id);
+  _recordVideo = false;
+  const brv = document.getElementById('btn-record-video');
+  if (brv) { brv.textContent = '📹 Video: OFF'; brv.style.color = ''; }
   if (res.session_id) {
     nav('history');
     await showSummary(res.session_id, 'Last Session');
@@ -2081,6 +2095,9 @@ function renderVideoHTML() {
       <canvas id="pose-canvas"
               style="position:absolute;top:0;left:0;width:100%;height:100%;z-index:2"></canvas>
       <div id="pose-status">Starting camera…</div>
+      <div id="rec-badge" style="display:none;position:absolute;top:10px;right:10px;z-index:10;
+           background:rgba(220,38,38,0.85);color:#fff;padding:4px 10px;border-radius:20px;
+           font-size:12px;font-weight:700;pointer-events:none">● REC</div>
     </div>
     <div class="angle-pills">
       <div class="angle-pill">
@@ -2109,6 +2126,8 @@ function _updateAnglePills() {
   if (ac) ac.textContent = _angleCache.catch;
   if (al) al.textContent = _angleCache.layback;
   if (ar) ar.textContent = _angleCache.ratio;
+  const rb = document.getElementById('rec-badge');
+  if (rb) rb.style.display = (_mediaRecorder && _mediaRecorder.state === 'recording') ? '' : 'none';
   // Capture angles on stroke state transitions
   if (_s.stroke_state !== _lastStrokeStateForAngle && _lastPoseLandmarks) {
     const st = _s.stroke_state;
@@ -2156,6 +2175,56 @@ function angleBetween(a, b, c) {
   const mag = Math.hypot(...ab) * Math.hypot(...cb);
   if (mag === 0) return null;
   return Math.round(Math.acos(Math.max(-1, Math.min(1, dot / mag))) * 180 / Math.PI);
+}
+
+function toggleRecordVideo() {
+  _recordVideo = !_recordVideo;
+  const btn = document.getElementById('btn-record-video');
+  if (!btn) return;
+  btn.textContent = _recordVideo ? '📹 Video: ON' : '📹 Video: OFF';
+  btn.style.color  = _recordVideo ? 'var(--green)' : '';
+}
+
+async function startVideoRecording() {
+  if (!_cameraStream || !_cameraStream.active) {
+    try {
+      _cameraStream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width:{ideal:640}, height:{ideal:480} },
+        audio: false,
+      });
+    } catch(e) { _recordVideo = false; return; }
+  }
+  _videoChunks = [];
+  const mime = ['video/webm;codecs=vp9','video/webm','video/mp4'].find(m => {
+    try { return MediaRecorder.isTypeSupported(m); } catch(_) { return false; }
+  }) || '';
+  try {
+    _mediaRecorder = new MediaRecorder(_cameraStream, mime ? {mimeType: mime} : {});
+  } catch(e) { _recordVideo = false; return; }
+  _mediaRecorder.ondataavailable = e => { if (e.data.size > 0) _videoChunks.push(e.data); };
+  _mediaRecorder.start(5000);
+}
+
+async function stopVideoRecording(sessionId) {
+  if (!_mediaRecorder || _mediaRecorder.state === 'inactive') return;
+  return new Promise(resolve => {
+    _mediaRecorder.onstop = async () => {
+      try {
+        if (_videoChunks.length && sessionId) {
+          const blob = new Blob(_videoChunks, {type: _mediaRecorder.mimeType || 'video/webm'});
+          await fetch(`/api/upload-video/${sessionId}`, {
+            method: 'POST',
+            headers: {'Content-Type': blob.type || 'video/webm'},
+            body: blob,
+          });
+        }
+      } catch(_) {}
+      _videoChunks = [];
+      _mediaRecorder = null;
+      resolve();
+    };
+    _mediaRecorder.stop();
+  });
 }
 
 async function initCamera() {
