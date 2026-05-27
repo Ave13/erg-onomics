@@ -15,7 +15,7 @@ import time
 from datetime import datetime
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -487,6 +487,22 @@ def api_strokes(session_id: int):
         }
         for r in rows
     ]
+
+
+@app.post("/api/upload-video/{session_id}")
+async def api_upload_video(session_id: int, request: Request):
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="empty body")
+    ct = request.headers.get("content-type", "video/webm")
+    ext = "mp4" if "mp4" in ct else "webm"
+    os.makedirs("exports", exist_ok=True)
+    path = f"exports/video_{session_id}.{ext}"
+    with open(path, "wb") as f:
+        f.write(body)
+    with sqlite3.connect(_DB_PATH) as conn:
+        conn.execute("UPDATE sessions SET video_path=? WHERE id=?", (path, session_id))
+    return {"saved": True, "path": path}
 
 
 # ── History ───────────────────────────────────────────────────────────────────

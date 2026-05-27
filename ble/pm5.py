@@ -228,6 +228,7 @@ def _init_db():
                 ("sessions",   "max_hr",             "INTEGER"),
                 ("sessions",   "drag_factor",        "INTEGER"),
                 ("sessions",   "tcx_path",           "TEXT"),
+                ("sessions",   "video_path",          "TEXT"),
             ]:
                 try:
                     conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typedef}")
