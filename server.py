@@ -30,6 +30,7 @@ from ble.pm5 import (
     start_session, stop_session, pause_session, resume_session,
     find_resumable_session, has_user_profile,
     save_user_profile, load_user_profile, save_target_pace,
+    log_snapshot,
 )
 from ble.csafe import workout_frames
 from ble.ftms import start_ftms
@@ -74,6 +75,7 @@ start_tof(state)
 def _audio_loop():
     while True:
         check_and_cue()
+        log_snapshot()
         time.sleep(1.0)
 
 threading.Thread(target=_audio_loop, daemon=True, name="audio").start()

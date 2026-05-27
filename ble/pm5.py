@@ -134,14 +134,44 @@ def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
                 "(stroke_num, elapsed_secs, interval_secs, speed_mm_s, logged_at, "
                 " drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n, "
                 " session_id, hr_bpm, work_per_stroke_j, stroke_distance_m, "
-                " watts, peak_avg_ratio, seat_drive_mm, force_curve_json) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                " watts, peak_avg_ratio, seat_drive_mm, force_curve_json, "
+                " drag_factor, spm) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (stroke_num, elapsed_secs, round(interval_secs, 4), speed_mm_s, time.time(),
                  drive_time_secs, recovery_secs, drive_length_cm, avg_force_n, peak_force_n,
                  state["session_id"],
                  state["hr_bpm"] if isinstance(state["hr_bpm"], int) else None,
                  work_per_stroke_j, stroke_distance_m,
-                 watts, peak_avg_ratio, seat_drive_mm, force_curve_json),
+                 watts, peak_avg_ratio, seat_drive_mm, force_curve_json,
+                 state.get("drag_factor"), state.get("spm") if isinstance(state.get("spm"), int) else None),
+            )
+    except Exception:
+        pass
+
+
+def log_snapshot():
+    """Write one row to session_snapshots. Called from server.py every ~1 s while active."""
+    if not state.get("session_active") or state.get("session_paused"):
+        return
+    sid = state.get("session_id")
+    if not sid:
+        return
+    fc = state.get("force_curve_data")
+    try:
+        with sqlite3.connect(_DB_PATH) as conn:
+            conn.execute(
+                "INSERT INTO session_snapshots "
+                "(session_id, ts, elapsed, distance, speed_mm_s, stroke_state, "
+                " spm, watts, pace, hr_bpm, drag_factor, force_curve_json) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                (sid, time.time(),
+                 state.get("elapsed"), state.get("distance"),
+                 state.get("speed_mm_s"), state.get("stroke_state"),
+                 state.get("spm") if isinstance(state.get("spm"), int) else None,
+                 state.get("watts"), state.get("pace"),
+                 state.get("hr_bpm") if isinstance(state.get("hr_bpm"), int) else None,
+                 state.get("drag_factor"),
+                 json.dumps(fc) if isinstance(fc, list) and fc else None),
             )
     except Exception:
         pass
@@ -218,6 +248,8 @@ def _init_db():
                 ("stroke_log", "video_ts",           "REAL"),  # wall-clock time of matching frame
                 ("stroke_log", "seat_drive_mm",      "INTEGER"),
                 ("stroke_log", "force_curve_json",   "TEXT"),
+                ("stroke_log", "drag_factor",        "INTEGER"),
+                ("stroke_log", "spm",                "INTEGER"),
                 ("sessions",   "user_id",            "INTEGER"),
                 ("sessions",   "workout_id",         "INTEGER"),
                 ("sessions",   "started_at",         "REAL"),
@@ -233,6 +265,23 @@ def _init_db():
                     conn.execute(f"ALTER TABLE {tbl} ADD COLUMN {col} {typedef}")
                 except Exception:
                     pass
+            # Dense time-series snapshots for demo playback (one row per second while active)
+            conn.execute(
+                "CREATE TABLE IF NOT EXISTS session_snapshots ("
+                "id INTEGER PRIMARY KEY, "
+                "session_id INTEGER NOT NULL, "
+                "ts REAL NOT NULL, "              # wall-clock time
+                "elapsed REAL, "                  # PM5 elapsed (s)
+                "distance REAL, "
+                "speed_mm_s INTEGER, "
+                "stroke_state INTEGER, "
+                "spm INTEGER, "
+                "watts INTEGER, "
+                "pace TEXT, "
+                "hr_bpm INTEGER, "
+                "drag_factor INTEGER, "
+                "force_curve_json TEXT)"
+            )
             # workouts table
             conn.execute(
                 "CREATE TABLE IF NOT EXISTS workouts ("
