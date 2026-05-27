@@ -468,9 +468,16 @@ def parse_force_curve(data):
 
 def parse_heart_rate(data):
     print(f"[hr] notify len={len(data)} raw={list(data)}", flush=True)
-    if len(data) < 2:
+    if len(data) == 0:
         return
-    hr = int.from_bytes(data[1:3], "little") if data[0] & 0x01 else data[1]
+    if len(data) == 1:
+        hr = data[0]                                      # PM5 1-byte proprietary format
+    elif data[0] & 0x01:
+        hr = int.from_bytes(data[1:3], "little")         # standard BHR 16-bit
+    else:
+        hr = data[1]                                      # standard BHR 8-bit
+    if hr == 0:
+        return
     state["hr_bpm"] = hr
 
 
