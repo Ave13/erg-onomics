@@ -2264,7 +2264,12 @@ async function initCamera() {
     if (statusEl()) statusEl().style.display = 'none';
     await loadPoseDetector();
   } catch(e) {
-    if (statusEl()) statusEl().textContent = 'Camera unavailable: ' + e.message;
+    const needsHttps = location.protocol !== 'https:' &&
+      (e.name === 'NotAllowedError' || e.name === 'NotSupportedError' || e.name === 'SecurityError');
+    const msg = needsHttps
+      ? 'Camera requires HTTPS. Run setup-https.sh on the UNO Q, trust the cert on this device, then reconnect via https://erg.local:8501'
+      : 'Camera unavailable: ' + e.message;
+    if (statusEl()) statusEl().textContent = msg;
   }
   _initCameraRunning = false;
 }

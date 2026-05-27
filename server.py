@@ -4,7 +4,11 @@ FastAPI web server — primary UI entry point.
 Run:
     uvicorn server:app --host 0.0.0.0 --port 8501 --reload
 
-Open http://erg.local:8501 (home WiFi) or http://10.0.0.1:8501 (ErgRower AP).
+With HTTPS (required for camera/getUserMedia on non-localhost):
+    Run setup-https.sh once to generate cert.pem + key.pem, then:
+    uvicorn server:app --host 0.0.0.0 --port 8501 --ssl-certfile cert.pem --ssl-keyfile key.pem
+
+Open https://erg.local:8501 (home WiFi) or https://10.0.0.1:8501 (ErgRower AP).
 """
 import json
 import os
