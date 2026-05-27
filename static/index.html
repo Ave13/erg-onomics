@@ -620,6 +620,16 @@ const TANAKA_MAX_HR = (dob) => {
   return Math.round(208 - 0.7 * age);
 };
 
+// ── Screen wake lock ─────────────────────────────────────────────────────────
+let _wakeLock = null;
+async function _acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try { _wakeLock = await navigator.wakeLock.request('screen'); } catch(_) {}
+}
+function _releaseWakeLock() {
+  if (_wakeLock) { _wakeLock.release().catch(()=>{}); _wakeLock = null; }
+}
+
 // ── State ────────────────────────────────────────────────────────────────────
 let _s = {};             // latest server state
 let _active = false, _paused = false;
@@ -1479,13 +1489,21 @@ _acquireWakeLock();
 // ── Session controls ──────────────────────────────────────────────────────────
 async function doStart() {
   await fetch('/api/start', {method:'POST'});
+  await _acquireWakeLock();
   if (_recordVideo) await startVideoRecording();
 }
 async function doPause() {
-  await fetch(_paused ? '/api/resume' : '/api/pause', {method:'POST'});
+  if (_paused) {
+    await fetch('/api/resume', {method:'POST'});
+    await _acquireWakeLock();
+  } else {
+    await fetch('/api/pause', {method:'POST'});
+    _releaseWakeLock();
+  }
 }
 async function doEnd() {
   const res = await fetch('/api/end', {method:'POST'}).then(r => r.json());
+  _releaseWakeLock();
   if (_mediaRecorder) await stopVideoRecording(res.session_id);
   _recordVideo = false;
   const brv = document.getElementById('btn-record-video');
