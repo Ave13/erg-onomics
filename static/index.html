@@ -1462,17 +1462,6 @@ async function tick() {
 }
 setInterval(tick, 500);
 
-// ── Wake lock — prevent screen sleep on iPhone/iPad ───────────────────────────
-let _wakeLock = null;
-async function _acquireWakeLock() {
-  if (!('wakeLock' in navigator)) return;
-  try { _wakeLock = await navigator.wakeLock.request('screen'); } catch(e) {}
-}
-document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') _acquireWakeLock();
-});
-_acquireWakeLock();
-
 // ── Startup ───────────────────────────────────────────────────────────────────
 (async () => {
   renderDots();
