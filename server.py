@@ -139,6 +139,7 @@ def _update_interval_state():
                 state["interval_index"] = i
                 state["interval_phase"] = "work"
                 state["interval_remaining"] = round(work_end - dist)
+                state["interval_goal"] = iv.get("meters", 60)
                 return
             cumulative_dist = work_end
             # rest phase: stamp when rest began so countdown is relative, not absolute
@@ -151,6 +152,7 @@ def _update_interval_state():
                     state["interval_index"] = i
                     state["interval_phase"] = "rest"
                     state["interval_remaining"] = round(rest_start + rest - state.get("elapsed", 0))
+                    state["interval_goal"] = rest
                     return
                 state.pop(rest_key, None)
 
@@ -160,6 +162,7 @@ def _update_interval_state():
                 state["interval_index"] = i
                 state["interval_phase"] = "work"
                 state["interval_remaining"] = round(work_end - elapsed)
+                state["interval_goal"] = iv.get("seconds", 60)
                 return
             cumulative_time = work_end
             if rest > 0:
@@ -168,6 +171,7 @@ def _update_interval_state():
                     state["interval_index"] = i
                     state["interval_phase"] = "rest"
                     state["interval_remaining"] = round(rest_end - elapsed)
+                    state["interval_goal"] = rest
                     return
                 cumulative_time += rest
 
