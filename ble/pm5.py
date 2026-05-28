@@ -83,6 +83,8 @@ _stroke_times = collections.deque(maxlen=10)
 _STROKE_STALE_SECS = 10
 _interval_buf = collections.deque(maxlen=3)  # rolling 3-stroke window for stable SPM
 _EMA_WATTS_ALPHA = 0.12    # heavy smoothing for live speed-derived watts
+_EMA_SPEED_ALPHA = 0.12    # same smoothing for displayed pace
+_ema_speed = None
 _ema_watts = None
 _last_notify_t = 0.0          # monotonic time of last BLE notification (watchdog)
 
@@ -380,6 +382,8 @@ def parse_general_status(data):
     prev_ws = state["workout_state"]
     state["workout_state"] = workout_state
     if workout_state == 0 and prev_ws != 0:
+        global _ema_speed
+        _ema_speed = None
         _interval_buf.clear()
         _stroke_times.clear()
         state["spm"] = "--"
@@ -390,14 +394,21 @@ def parse_general_status(data):
 
 
 def parse_add_status_1(data):
-    global _ema_watts
+    global _ema_watts, _ema_speed
     if len(data) < 2:
         return
     speed_mm_s = int.from_bytes(data[0:2], "little")
-    pace_str = speed_to_pace(speed_mm_s)
-    pace_sec = (500 / (speed_mm_s / 1000)) if speed_mm_s > 0 else 0
-    state["pace"]       = pace_str
     state["speed_mm_s"] = speed_mm_s
+    if speed_mm_s > 0:
+        if _ema_speed is None:
+            _ema_speed = speed_mm_s
+        else:
+            _ema_speed = _EMA_SPEED_ALPHA * speed_mm_s + (1 - _EMA_SPEED_ALPHA) * _ema_speed
+        pace_sec = 500 / (_ema_speed / 1000)
+        state["pace"] = speed_to_pace(round(_ema_speed))
+    else:
+        pace_sec = 0
+        state["pace"] = "--:--"
     # Smooth instantaneous watts; parse_stroke_data overrides with stroke average
     instant = pace_to_watts(pace_sec) if pace_sec > 0 else 0
     if _ema_watts is None:
@@ -529,7 +540,8 @@ def parse_workout_summary(data):
 
 
 def start_session(resume_id=None, workout_id=None):
-    global _ema_watts
+    global _ema_watts, _ema_speed
+    _ema_speed = None
     _interval_buf.clear()
     _ema_watts = None
     _stroke_times.clear()
