@@ -196,35 +196,71 @@ if curves_df.empty:
     st.info("No force curve data in this session. Sessions recorded after the CE06003D upgrade will include full curves.")
 else:
     n_curves = len(curves_df)
-    stroke_idx = st.slider("Stroke", min_value=1, max_value=n_curves, value=1,
+    stroke_idx = st.slider("Stroke", min_value=1, max_value=n_curves, value=n_curves,
                            format="Stroke %d") - 1
     row = curves_df.iloc[stroke_idx]
     pts = row["force_curve"]  # list of floats in Newtons
 
-    # X-axis: distribute samples evenly across drive length (if available), else sample index
-    dl_m = (row["drive_length"] / 100.0) if pd.notna(row.get("drive_length")) else None
-    if dl_m and dl_m > 0:
-        xs = [dl_m * i / max(len(pts) - 1, 1) for i in range(len(pts))]
-        x_label = "Drive position (m)"
+    # Ratio-based colour: green ≤1.75, orange ≤2.10, red >2.10 (matches web UI)
+    ratio = row.get("peak_avg_ratio")
+    if pd.notna(ratio):
+        if ratio <= 1.75:
+            curve_color = "#2ECC71"
+        elif ratio <= 2.10:
+            curve_color = "#F39C12"
+        else:
+            curve_color = "#E74C3C"
     else:
-        xs = list(range(len(pts)))
-        x_label = "Sample index"
+        curve_color = "#636EFA"
 
-    max_n = max(pts) if pts else 1
+    def _xs_for(r):
+        dl = (r["drive_length"] / 100.0) if pd.notna(r.get("drive_length")) else None
+        n  = len(r["force_curve"])
+        if dl and dl > 0:
+            return [dl * i / max(n - 1, 1) for i in range(n)], "Drive position (m)"
+        return list(range(n)), "Sample index"
+
+    xs, x_label = _xs_for(row)
+    all_y = list(pts)
+
+    # Ghost traces: up to 5 strokes before the selected one (faded)
+    ghost_traces = []
+    for g_offset in range(5, 0, -1):
+        g_idx = stroke_idx - g_offset
+        if g_idx < 0:
+            continue
+        g_row = curves_df.iloc[g_idx]
+        g_xs, _ = _xs_for(g_row)
+        opacity = 0.08 + g_offset * 0.06  # 0.14 → 0.38 from oldest to newest
+        ghost_traces.append(go.Scatter(
+            x=g_xs, y=g_row["force_curve"],
+            mode="lines",
+            line=dict(color=f"rgba(150,150,150,{opacity:.2f})", width=1),
+            showlegend=False, hoverinfo="skip",
+        ))
+        all_y.extend(g_row["force_curve"])
+
+    max_n = max(all_y) if all_y else 1
     avg_n = row.get("avg_force_n")
     peak_n = row.get("peak_force_n")
 
-    fig6 = go.Figure([
+    fig6 = go.Figure(ghost_traces + [
         go.Scatter(
             x=xs, y=pts,
             mode="lines",
             fill="tozeroy",
-            fillcolor="rgba(99,110,250,0.15)",
-            line=dict(color="rgba(99,110,250,1)", width=2),
+            fillcolor=curve_color.replace("#", "rgba(").rstrip(")") + ",0.15)" if curve_color.startswith("#") else curve_color,
+            line=dict(color=curve_color, width=2.5),
             name="Force",
             hovertemplate=f"{x_label.split()[0]} %{{x:.2f}} — %{{y:.0f}} N<extra></extra>",
         ),
     ])
+
+    # fix fill colour: plotly needs rgba string
+    fill_hex = curve_color.lstrip("#")
+    r_int, g_int, b_int = int(fill_hex[0:2],16), int(fill_hex[2:4],16), int(fill_hex[4:6],16)
+    fig6.data[-1].fillcolor = f"rgba({r_int},{g_int},{b_int},0.15)"
+
     if pd.notna(avg_n):
         fig6.add_hline(y=avg_n, line_dash="dash", line_color="steelblue",
                        annotation_text=f"Avg {avg_n:.0f} N", annotation_position="top left")
@@ -235,8 +271,11 @@ else:
         xaxis_title=x_label,
         yaxis_title="Force (N)",
         yaxis=dict(range=[0, max_n * 1.15]),
-        height=340, margin=dict(t=20, b=40),
+        height=380, margin=dict(t=20, b=40),
         showlegend=False,
+        plot_bgcolor="#0e1117", paper_bgcolor="#0e1117",
+        font_color="#c8c8d8",
+        xaxis=dict(gridcolor="#1e2030"), yaxis_gridcolor="#1e2030",
     )
     st.plotly_chart(fig6, use_container_width=True)
 
@@ -244,8 +283,9 @@ else:
     elapsed_str = f"{int(row['elapsed'])//60}:{int(row['elapsed'])%60:02d}" if pd.notna(row.get("elapsed")) else "--"
     drive_str   = f"{row['drive_time']:.2f} s" if pd.notna(row.get("drive_time")) else "--"
     rec_str     = f"{row['recovery']:.2f} s" if pd.notna(row.get("recovery")) else "--"
+    dl_m        = (row["drive_length"] / 100.0) if pd.notna(row.get("drive_length")) else None
     dl_str      = f"{dl_m:.2f} m" if dl_m else "--"
-    ratio_str   = f"{row['peak_avg_ratio']:.2f}" if pd.notna(row.get("peak_avg_ratio")) else "--"
+    ratio_str   = f"{ratio:.2f}" if pd.notna(ratio) else "--"
     mcols = st.columns(6)
     for col, (label, val) in zip(mcols, [
         ("Stroke #", f"{stroke_idx + 1} / {n_curves}"),

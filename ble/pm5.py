@@ -81,8 +81,7 @@ _disconnect_requested = False          # set True to drop BLE connection
 
 _stroke_times = collections.deque(maxlen=10)
 _STROKE_STALE_SECS = 10
-_EMA_ALPHA = 0.25          # smoothing factor for interval EMA
-_ema_interval_secs = None  # exponential moving average of inter-stroke interval
+_interval_buf = collections.deque(maxlen=3)  # rolling 3-stroke window for stable SPM
 _EMA_WATTS_ALPHA = 0.12    # heavy smoothing for live speed-derived watts
 _ema_watts = None
 _last_notify_t = 0.0          # monotonic time of last BLE notification (watchdog)
@@ -108,11 +107,11 @@ def pace_to_watts(pace_sec):
 
 
 def _calc_spm():
-    if not _stroke_times or _ema_interval_secs is None:
+    if not _interval_buf or not _stroke_times:
         return "--"
     if time.monotonic() - _stroke_times[-1] > _STROKE_STALE_SECS:
         return "--"
-    return round(60 / _ema_interval_secs)
+    return round(60 / (sum(_interval_buf) / len(_interval_buf)))
 
 
 def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
@@ -381,8 +380,7 @@ def parse_general_status(data):
     prev_ws = state["workout_state"]
     state["workout_state"] = workout_state
     if workout_state == 0 and prev_ws != 0:
-        global _ema_interval_secs
-        _ema_interval_secs = None
+        _interval_buf.clear()
         _stroke_times.clear()
         state["spm"] = "--"
         state["interval"] = "--"
@@ -443,13 +441,9 @@ def parse_stroke_data(data):
     now = time.monotonic()
     _stroke_times.append(now)  # kept only for staleness detection in _calc_spm
 
-    # SPM and interval: use CE060035-measured drive+recovery timing (matches PM5 algorithm)
+    # SPM: 3-stroke rolling average matches PM5 display stability
     state["interval"] = f"{stroke_period:.2f}s"
-    global _ema_interval_secs
-    if _ema_interval_secs is None:
-        _ema_interval_secs = stroke_period
-    else:
-        _ema_interval_secs = _EMA_ALPHA * stroke_period + (1 - _EMA_ALPHA) * _ema_interval_secs
+    _interval_buf.append(stroke_period)
     state["spm"] = _calc_spm()
 
     _log_stroke(
@@ -535,8 +529,8 @@ def parse_workout_summary(data):
 
 
 def start_session(resume_id=None, workout_id=None):
-    global _ema_interval_secs, _ema_watts
-    _ema_interval_secs = None
+    global _ema_watts
+    _interval_buf.clear()
     _ema_watts = None
     _stroke_times.clear()
     state["force_curve_data"] = None  # don't carry previous session's curve into first stroke
