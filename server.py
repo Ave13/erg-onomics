@@ -242,9 +242,9 @@ def api_state():
         s["avg_pace"] = "--:--"
         avg_watts = 0
         s["avg_watts"] = 0
-    cal_hr = round(4 * avg_watts + 300) if avg_watts > 0 else 0
-    s["cal_hr"] = cal_hr
-    s["calories"] = round(cal_hr * elapsed / 3600) if cal_hr > 0 else 0
+    cur_watts = s.get("watts") or 0
+    s["cal_hr"]  = round(4 * cur_watts + 300) if cur_watts > 0 else 0
+    s["calories"] = round((4 * avg_watts + 300) * elapsed / 3600) if avg_watts > 0 else 0
     return JSONResponse(s)
 
 
