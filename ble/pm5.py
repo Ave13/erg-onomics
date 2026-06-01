@@ -120,7 +120,7 @@ def _log_stroke(stroke_num, elapsed_secs, interval_secs, speed_mm_s,
                 drive_length_cm=None, avg_force_n=None, peak_force_n=None,
                 work_per_stroke_j=None, stroke_distance_m=None,
                 seat_drive_mm=None):
-    if state.get("session_paused"):
+    if not state.get("session_active") or state.get("session_paused"):
         return
     # Derived correlation metrics
     watts = round(2.80 / (500_000 / speed_mm_s / 500) ** 3) if speed_mm_s > 0 else None

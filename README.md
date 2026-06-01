@@ -46,6 +46,103 @@ Concept2 PM5 rowing app for the Arduino UNO Q. Connects to the PM5 over BLE, log
 
 **TCX export** — Every session exported to `exports/` for Apple Health (via HealthFit), Garmin Connect, or Strava.
 
+## Metrics
+
+### BLE Data Sources
+
+The PM5 pushes data on three notify-only characteristics (reads return zeros):
+
+| Characteristic | UUID prefix | Rate | Fields |
+|---|---|---|---|
+| General Status | `CE060031` | ~1 Hz | elapsed time, distance, workout state |
+| Additional Status 1 | `CE060032` | ~5 Hz | instantaneous speed, stroke state, drag factor |
+| Stroke Data | `CE060035` | once per stroke | drive/recovery timing, forces, work, stroke count |
+| Force Curve | `CE06003D` | 18 packets/stroke | one force sample per packet (Newtons) |
+| Heart Rate | `CE06003A` | on change | HR from paired ANT+ strap |
+
+### Computed Metrics
+
+| Metric | Source | How |
+|---|---|---|
+| **Pace** | CE060035 | `stroke_period / stroke_distance_m × 500` — 3-stroke rolling average |
+| **Watts** | CE060035 | `2.80 / (pace_sec / 500)³` — Concept2 standard formula |
+| **SPM** | CE060035 | `60 / stroke_period` — 3-stroke rolling average; `--` if last stroke > 10 s ago |
+| **Cal/hr** | derived | `4 × current_watts + 300` |
+| **Calories** | derived | `(4 × avg_watts + 300) × elapsed / 3600` |
+| **Avg pace / watts** | session | `elapsed × 500 / distance` and watts formula applied to avg pace |
+| **Drive:Rec ratio** | CE060035 | `drive_time / recovery_time` |
+| **Peak/Avg force ratio** | CE060035 | `avg_force_n / peak_force_n` |
+
+### Sample Stroke (demo mode, ~24 SPM / 2:10 pace)
+
+Below is a representative snapshot of `state` after one complete stroke:
+
+**CE060031 — General Status** (1 Hz)
+```
+elapsed_cs:    1250   →  12.50 s
+distance_dm:   480    →  48.0 m
+workout_state: 3      (in-use)
+```
+
+**CE060032 — Additional Status 1** (5 Hz, three packets per stroke)
+```
+speed_mm_s:   4446   (drive surge: +600 over baseline)
+              3646   (decelerate:  −200)
+              3446   (recovery:    −400)
+stroke_state: 1 / 2 / 3   (drive / decel / recovery)
+drag_factor:  127
+```
+
+**CE060035 — Stroke Data** (once per stroke)
+```
+drive_length:   86 cm     →  state["drive_length"]  = "0.86m"
+drive_time:     60 ticks  →  state["drive_time"]    = "0.60s"
+recovery:      190 ticks  →  state["recovery"]      = "1.90s"
+stroke_distance: 960 cm²  →  9.60 m
+peak_force:    2800 /10   →  280.0 N
+avg_force:     1950 /10   →  195.0 N
+work/stroke:   3975 /10   →  397.5 J
+stroke_count:  5
+```
+
+**Derived from stroke data**
+```
+stroke_period  = 0.60 + 1.90 = 2.50 s
+pace           = 2.50 / 9.60 × 500 = 130.2 s  →  "2:10"
+watts          = 2.80 / (130.2 / 500)³         →  159 W
+spm            = round(60 / 2.50)              →  24
+dr:rec ratio   = 0.60 / 1.90                   →  0.32
+```
+
+**CE06003D — Force Curve** (18 samples per stroke, in Newtons)
+```
+index:  0     1     2     3     4     5     6     7  …  17
+force:  0.0  52.5 168.0 252.0 280.0 241.5 189.0 140.0 … 0.0
+              ↑ ramp up        ↑ peak         ↑ decay tail
+```
+
+**Server-derived fields (api_state)**
+```
+elapsed_str:  "0:12"
+distance_str: "48 m"
+avg_pace:     "2:10"
+avg_watts:    159
+cal_hr:       936    (4 × 159 + 300)
+calories:     3      (936 × 12.5 / 3600)
+```
+
+**What each Row screen shows at this moment**
+
+| Screen | Hero | Key cards |
+|---|---|---|
+| Power (0) | 159 W | 2:10 pace · 24 SPM · 48 m · 0:12 elapsed · 936 cal/hr |
+| Endurance (1) | -- bpm | 2:10 · 159 W · 48 m |
+| Technique (2) | — | 0.60 s drive · 1.90 s rec · ratio 0.32 · 0.86 m length |
+| Force Curve (3) | canvas | peak 280 N · avg 195 N · P/A ratio 0.70 |
+| Stroke Timing (4) | ratio bar | 0.60 s · 1.90 s · 0.32 |
+
+---
+
 ## Stack
 
 - **Python 3** — `bleak` (BLE central), `bless` (FTMS peripheral), `fastapi` + `uvicorn` (web UI), `SQLite` (storage)
