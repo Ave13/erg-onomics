@@ -649,6 +649,19 @@ let _ghostLandmarks = null;
 let _bestGhostWatts = 0;
 let _lastPoseLandmarks = null;
 let _angleCache = {catch:'--', layback:'--', ratio:'--'};
+// Wake lock — keeps screen on during active session
+let _wakeLock = null;
+async function _acquireWakeLock() {
+  if (!('wakeLock' in navigator)) return;
+  try { _wakeLock = await navigator.wakeLock.request('screen'); } catch(_e) {}
+}
+function _releaseWakeLock() {
+  if (_wakeLock) { _wakeLock.release().catch(() => {}); _wakeLock = null; }
+}
+// Re-acquire after phone returns from background (visibility change drops lock)
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && _active) _acquireWakeLock();
+});
 let _lastStrokeStateForAngle = -1;
 let _initCameraRunning = false;
 // Force curve ghost trail (JS-side, for beta-model fallback when CE06003D absent)
@@ -1448,9 +1461,14 @@ async function tick() {
     // Re-render current screen
     renderScreen();
     renderDots();
-  } catch(e) {}
+  } catch(e) {
+    console.warn('[tick]', e);
+  } finally {
+    // Self-schedule so a slow response doesn't cause request pileup
+    setTimeout(tick, 500);
+  }
 }
-setInterval(tick, 500);
+setTimeout(tick, 0);  // kick off first tick immediately
 
 // ── Startup ───────────────────────────────────────────────────────────────────
 (async () => {
@@ -1466,22 +1484,56 @@ setInterval(tick, 500);
 })();
 
 // ── Session controls ──────────────────────────────────────────────────────────
+let _sessionBusy = false;  // prevents double-tap on Start / Pause / End
+
 async function doStart() {
-  await fetch('/api/start', {method:'POST'});
-  if (_recordVideo) await startVideoRecording();
+  if (_sessionBusy || _active) return;
+  _sessionBusy = true;
+  _active = true;   // optimistic: button disappears immediately
+  try {
+    await fetch('/api/start', {method:'POST'});
+    await _acquireWakeLock();
+    if (_recordVideo) await startVideoRecording();
+  } catch(_e) {
+    _active = false;  // roll back if server unreachable
+  } finally {
+    _sessionBusy = false;
+  }
 }
 async function doPause() {
-  await fetch(_paused ? '/api/resume' : '/api/pause', {method:'POST'});
+  if (_sessionBusy || !_active) return;
+  _sessionBusy = true;
+  const wasPaused = _paused;
+  _paused = !_paused;  // optimistic
+  if (_paused) _releaseWakeLock(); else await _acquireWakeLock();
+  try {
+    await fetch(wasPaused ? '/api/resume' : '/api/pause', {method:'POST'});
+  } catch(_e) {
+    _paused = wasPaused;  // roll back
+  } finally {
+    _sessionBusy = false;
+  }
 }
 async function doEnd() {
-  const res = await fetch('/api/end', {method:'POST'}).then(r => r.json());
-  if (_mediaRecorder) await stopVideoRecording(res.session_id);
-  _recordVideo = false;
-  const brv = document.getElementById('btn-record-video');
-  if (brv) { brv.textContent = '📹 Video: OFF'; brv.style.color = ''; }
-  if (res.session_id) {
-    nav('history');
-    await showSummary(res.session_id, 'Last Session');
+  if (_sessionBusy || !_active) return;
+  _sessionBusy = true;
+  _active = false;  // optimistic
+  _releaseWakeLock();
+  try {
+    const res = await fetch('/api/end', {method:'POST'}).then(r => r.json());
+    if (_mediaRecorder) await stopVideoRecording(res.session_id);
+    _recordVideo = false;
+    const brv = document.getElementById('btn-record-video');
+    if (brv) { brv.textContent = '📹 Video: OFF'; brv.style.color = ''; }
+    if (res.session_id) {
+      nav('history');
+      await showSummary(res.session_id, 'Last Session');
+    }
+  } catch(_e) {
+    _active = true;  // roll back
+    await _acquireWakeLock();
+  } finally {
+    _sessionBusy = false;
   }
 }
 async function doResume() {
