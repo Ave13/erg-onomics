@@ -623,8 +623,9 @@ const TANAKA_MAX_HR = (dob) => {
 // ── State ────────────────────────────────────────────────────────────────────
 let _s = {};             // latest server state
 let _active = false, _paused = false;
-let _hrZoneSecs = [0,0,0,0,0]; // seconds per zone accumulated this session
-let _wasActive  = false;        // previous-tick value; detects session start/end
+let _hrZoneSecs   = [0,0,0,0,0]; // seconds per zone accumulated this session
+let _wasActive    = false;        // previous-tick value; detects session start/end
+let _sessionHrSum = 0, _sessionHrCount = 0; // for session-average HR
 let _resumeId = null;
 let _targetSec = null;
 let _targetRestored = false;
@@ -743,6 +744,29 @@ function renderScreen() {
       if (sc) sc.textContent = peakRatioCoach();
       if (sd) { const rc = peakRatioClass(); sd.className = 'fc-metric' + (rc ? ' val-'+rc : ''); }
       if (sw) sw.textContent = _s.work_per_stroke_j != null ? Math.round(_s.work_per_stroke_j) + 'J' : '--';
+      // HR header + zone bar
+      const _hdr = document.getElementById('fc-hr-header');
+      if (_hdr) {
+        const _hr  = _s.hr_bpm;
+        const _mhr = TANAKA_MAX_HR(_userDob);
+        const _avgHr = _sessionHrCount > 0 ? Math.round(_sessionHrSum / _sessionHrCount) : null;
+        const _zn  = ['Z1 Easy','Z2 Aerobic','Z3 Tempo','Z4 Threshold','Z5 Max'];
+        let _htxt = '<span style="opacity:0.35">-- bpm</span>';
+        if (typeof _hr === 'number' && _mhr > 0) {
+          const _f = _hr / _mhr;
+          const _z = _f<0.60?0 : _f<0.70?1 : _f<0.80?2 : _f<0.90?3 : 4;
+          _htxt = `<span style="color:${ZONE_COLORS[_z]}">${_hr} bpm · ${_zn[_z]}</span>`;
+        }
+        const _atxt = _avgHr != null ? `<span style="opacity:0.55;font-size:11px;font-weight:400">Avg ${_avgHr}</span>` : '';
+        _hdr.innerHTML = `<span>❤ ${_htxt}</span>${_atxt}`;
+      }
+      const _bar = document.getElementById('fc-zone-bar-inner');
+      if (_bar) {
+        const _tot = _hrZoneSecs.reduce((a,b)=>a+b,0) || 1;
+        _bar.innerHTML = ZONE_COLORS.map((c,i)=>
+          `<span style="flex:${_hrZoneSecs[i]/_tot};background:${c}"></span>`
+        ).join('');
+      }
     }
     requestAnimationFrame(drawForce);
     return;
@@ -992,6 +1016,12 @@ function renderForceCurveHTML() {
   const rCls = peakRatioClass();
   const wps  = _s.work_per_stroke_j != null ? Math.round(_s.work_per_stroke_j) + 'J' : '--';
   return `<div class="fc-layout">
+    <div id="fc-hr-section" style="flex-shrink:0;padding:0 2px">
+      <div id="fc-hr-header" style="font-size:13px;font-weight:600;display:flex;justify-content:space-between;align-items:center;padding:2px 4px 4px"></div>
+      <div style="height:10px;border-radius:4px;overflow:hidden;margin-bottom:4px;display:flex">
+        <div id="fc-zone-bar-inner" style="display:flex;width:100%"></div>
+      </div>
+    </div>
     <div class="fc-metrics">
       <div class="fc-metric">
         <div class="lbl">Peak Force</div>
@@ -1532,7 +1562,7 @@ async function tick() {
     }
 
     // HR zone time accumulation (client-side, reset on session start)
-    if (_active && !_wasActive) _hrZoneSecs = [0,0,0,0,0];
+    if (_active && !_wasActive) { _hrZoneSecs = [0,0,0,0,0]; _sessionHrSum = 0; _sessionHrCount = 0; }
     _wasActive = _active;
     if (_active && !_paused && typeof _s.hr_bpm === 'number') {
       const _mhr = TANAKA_MAX_HR(_userDob);
@@ -1541,6 +1571,8 @@ async function tick() {
         const _z = _f < 0.60 ? 0 : _f < 0.70 ? 1 : _f < 0.80 ? 2 : _f < 0.90 ? 3 : 4;
         _hrZoneSecs[_z] += 0.5;
       }
+      _sessionHrSum   += _s.hr_bpm;
+      _sessionHrCount += 1;
     }
 
     // BLE status pill
