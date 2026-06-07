@@ -623,6 +623,8 @@ const TANAKA_MAX_HR = (dob) => {
 // ── State ────────────────────────────────────────────────────────────────────
 let _s = {};             // latest server state
 let _active = false, _paused = false;
+let _hrZoneSecs = [0,0,0,0,0]; // seconds per zone accumulated this session
+let _wasActive  = false;        // previous-tick value; detects session start/end
 let _resumeId = null;
 let _targetSec = null;
 let _targetRestored = false;
@@ -880,12 +882,36 @@ function renderEndurance() {
   const hrAlts = alts_hr();
   const hrAlt  = hrAlts[(_flip['hr'] || 0) % hrAlts.length];
   const hrValStyle = zoneColor ? `style="color:${zoneColor}"` : '';
+
+  const fmtMSS = s => `${Math.floor(s/60)}:${String(s%60|0).padStart(2,'0')}`;
+  let zoneBlock = '';
+  if (typeof hr === 'number') {
+    const tot = _hrZoneSecs.reduce((a,b)=>a+b,0) || 1;
+    const bar = ZONE_COLORS.map((c,i)=>
+      `<span style="flex:${_hrZoneSecs[i]/tot};background:${c}" title="${zoneNames[i]}"></span>`
+    ).join('');
+    const rows = zoneNames.map((n,i) => {
+      const isGoal   = i === 1; // Z2 is the user's target zone
+      const isActive = i === zone;
+      const dot = isActive ? `<span style="color:${ZONE_COLORS[i]}">● </span>` : '';
+      const goalStyle = isGoal ? `font-weight:700;border-left:2px solid ${ZONE_COLORS[i]};padding-left:4px` : '';
+      return `<div style="${goalStyle}">${dot}${n}&nbsp;&nbsp;<span style="opacity:0.55">${fmtMSS(_hrZoneSecs[i])}</span></div>`;
+    }).join('');
+    zoneBlock = `<div class="g-card wide" style="padding:8px 10px">
+      <div style="display:flex;height:12px;border-radius:4px;overflow:hidden;margin-bottom:8px">${bar}</div>
+      <div style="font-size:11px;display:grid;grid-template-columns:1fr 1fr;gap:2px 8px">${rows}</div>
+    </div>`;
+  } else {
+    zoneBlock = `<div class="g-card wide" style="padding:8px 10px;opacity:0.35;font-size:11px;text-align:center">Connect HR monitor for zone tracking</div>`;
+  }
+
   return `<div class="g-grid">
     <div class="g-card wide hero hr-card" data-flip="hr">
       <div class="lbl">${hrAlt.label}</div>
       <div class="val" ${hrValStyle}>${hrAlt.value()??'--'}</div>
       ${zone >= 0 ? `<div class="sub">${zoneNames[zone]}</div>` : ''}
     </div>
+    ${zoneBlock}
     ${gCard('e-pace',  [{label:'Pace',     value:()=>_s.pace??'--'}])}
     ${gCard('e-watts', [{label:'Watts',    value:()=>_s.watts??0}])}
   </div>`;
@@ -939,12 +965,25 @@ function peakRatioCoach() {
        : 'Spiky — check sequence';
 }
 function renderTechnique() {
-  const rc = ratioClass();
+  const rc  = ratioClass();
+  const pr  = peakRatioClass();
+  const dc  = deltaClass();
+  const expDrive = _s.expected_drive_cm ? (_s.expected_drive_cm / 100).toFixed(2) + 'm' : '--';
+  const prLabel  = pr === 'good' ? 'Sustained drive'
+                 : pr === 'warn' ? 'Finish falling short'
+                 : pr === 'bad'  ? 'Spiky — check sequence' : '';
   return `<div class="g-grid">
     <div class="g-card"><div class="lbl">Drive Time</div><div class="val">${_s.drive_time??'--'}</div></div>
     <div class="g-card"><div class="lbl">Recovery</div><div class="val">${_s.recovery??'--'}</div></div>
     <div class="g-card ${rc?'val-'+rc:''}"><div class="lbl">Dr:Rec Ratio</div><div class="val">${driveRecoveryRatio()}</div></div>
     <div class="g-card"><div class="lbl">SPM</div><div class="val">${_s.spm??'--'}</div></div>
+    <div class="g-card"><div class="lbl">Drive Length</div><div class="val">${_s.drive_length??'--'}</div></div>
+    <div class="g-card"><div class="lbl">Expected</div><div class="val">${expDrive}</div></div>
+    <div class="g-card ${dc?'val-'+dc:''}"><div class="lbl">Delta</div><div class="val">${driveDelta()}</div></div>
+    <div class="g-card ${pr?'val-'+pr:''}"><div class="lbl">Peak/Avg</div><div class="val">${peakRatioVal()}</div>${prLabel?`<div class="sub">${prLabel}</div>`:''}</div>
+    <div class="g-card"><div class="lbl">Peak Force</div><div class="val">${fmtN(_s.peak_force_n)}</div></div>
+    <div class="g-card"><div class="lbl">Avg Force</div><div class="val">${fmtN(_s.avg_force_n)}</div></div>
+    <div class="g-card"><div class="lbl">Streak</div><div class="val">${_s.perfect_streak??0}</div><div class="sub">Best ${_s.perfect_streak_best??0}</div></div>
   </div>`;
 }
 
@@ -1038,24 +1077,36 @@ function drawForce() {
     return p;
   }
 
-  // ── Stroke phase separators: Catch | Drive | Finish | Recovery ───────────────
+  // ── Stroke phase strip + boundary lines ──────────────────────────────────────
+  const phaseStripY = yPx(0);  // sits just below the x-axis baseline
+  const phaseStripH = 10;
+  const phases = [
+    ['Catch',  0,    0.25, 'rgba(74,158,255,0.75)'],
+    ['Drive',  0.25, 0.60, 'rgba(46,204,113,0.75)'],
+    ['Finish', 0.60, 0.82, 'rgba(242,114,25,0.75)'],
+    ['Rec',    0.82, 1.0,  'rgba(150,150,150,0.55)'],
+  ];
+  ctx.save();
+  ctx.font = '9px -apple-system,sans-serif';
+  ctx.textBaseline = 'middle';
+  phases.forEach(([label, t0, t1, color]) => {
+    const x0 = xPx(t0), x1 = xPx(t1);
+    ctx.fillStyle = color;
+    ctx.fillRect(x0, phaseStripY, x1 - x0, phaseStripH);
+    ctx.fillStyle = 'rgba(255,255,255,0.9)';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, (x0 + x1) / 2, phaseStripY + phaseStripH / 2);
+  });
+  ctx.restore();
+  ctx.strokeStyle = 'rgba(255,255,255,0.15)';
+  ctx.lineWidth   = 1;
+  ctx.setLineDash([]);
   [0.25, 0.60, 0.82].forEach(t => {
-    ctx.strokeStyle = 'rgba(255,255,255,0.28)';
-    ctx.lineWidth   = 1.5;
-    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(xPx(t), pad.t);
-    ctx.lineTo(xPx(t), yPx(0));
+    ctx.lineTo(xPx(t), phaseStripY);
     ctx.stroke();
   });
-  ctx.fillStyle = 'rgba(255,255,255,0.22)';
-  ctx.font      = '8px -apple-system,sans-serif';
-  ctx.textAlign = 'center';
-  ctx.fillText('Catch',    xPx(0.125), yPx(0) - 3);
-  ctx.fillText('Drive',    xPx(0.425), yPx(0) - 3);
-  ctx.fillText('Finish',   xPx(0.71),  yPx(0) - 3);
-  ctx.fillText('Recovery', xPx(0.91),  yPx(0) - 3);
-  ctx.textAlign = 'left';
 
   function idealShape(t) {
     const rEnd = 0.33, pEnd = 0.52;
@@ -1087,19 +1138,44 @@ function drawForce() {
     });
     ctx.globalAlpha = 1;
   }
-  if (expPk > 0) {
-    const ipts = genCurve(idealShape, expPk);
-    ctx.fillStyle = 'rgba(255,255,255,0.035)';
+  // ── Ideal stroke shape (blue) — shape reference, scaled to current peak ───────
+  const idealPeak = actualPeak > 0 ? actualPeak : maxN / 1.2;
+  {
+    const ipts = genCurve(idealShape, idealPeak);
+    ctx.fillStyle = 'rgba(74,158,255,0.07)';
     ctx.fill(curvePath(ipts, true));
-    ctx.save();
-    ctx.setLineDash([5, 5]);
-    ctx.strokeStyle = 'rgba(155,162,220,0.55)';
+    ctx.strokeStyle = '#4a9eff';
     ctx.lineWidth   = 1.5;
+    ctx.setLineDash([]);
     ctx.stroke(curvePath(ipts));
-    ctx.restore();
-    ctx.fillStyle = 'rgba(155,162,220,0.6)';
+    ctx.fillStyle = '#4a9eff';
     ctx.font = '10px -apple-system,sans-serif';
-    ctx.fillText('Ideal  ' + Math.round(expPk) + 'N', xPx(0.40), yPx(expPk) - 4);
+    ctx.fillText('Ideal shape', xPx(0.40), yPx(idealPeak) - 6);
+  }
+
+  // ── Average of last N strokes (red) ──────────────────────────────────────────
+  if (hist.length >= 2) {
+    const N = 32;
+    const sum = Array(N).fill(0);
+    hist.forEach(curve => {
+      if (!Array.isArray(curve) || curve.length < 2) return;
+      for (let i = 0; i < N; i++) {
+        const t  = i / (N - 1) * (curve.length - 1);
+        const lo = Math.floor(t), hi = Math.min(lo + 1, curve.length - 1);
+        sum[i]  += curve[lo] + (t - lo) * (curve[hi] - curve[lo]);
+      }
+    });
+    const avgPts = sum.map((v, i) => ({ x: xPx(i / (N - 1)), y: yPx(v / hist.length) }));
+    ctx.strokeStyle = '#e53333';
+    ctx.lineWidth   = 1.5;
+    ctx.setLineDash([]);
+    ctx.stroke(curvePath(avgPts, false, 4));
+    const midY = avgPts[16]?.y;
+    if (midY != null) {
+      ctx.fillStyle = '#e53333';
+      ctx.font = '10px -apple-system,sans-serif';
+      ctx.fillText(`Avg ×${hist.length}`, xPx(0.55), midY - 4);
+    }
   }
 
   // Actual drive curve — live samples from CE06003D (partial or full), or beta estimate
@@ -1452,6 +1528,18 @@ async function tick() {
       document.getElementById('target-bar')?.classList.remove('hidden');
     } else if (!_s.target_pace_sec) {
       _targetRestored = true; // nothing to restore — mark done so we don't re-check
+    }
+
+    // HR zone time accumulation (client-side, reset on session start)
+    if (_active && !_wasActive) _hrZoneSecs = [0,0,0,0,0];
+    _wasActive = _active;
+    if (_active && !_paused && typeof _s.hr_bpm === 'number') {
+      const _mhr = TANAKA_MAX_HR(_userDob);
+      if (_mhr > 0) {
+        const _f = _s.hr_bpm / _mhr;
+        const _z = _f < 0.60 ? 0 : _f < 0.70 ? 1 : _f < 0.80 ? 2 : _f < 0.90 ? 3 : 4;
+        _hrZoneSecs[_z] += 0.5;
+      }
     }
 
     // BLE status pill
