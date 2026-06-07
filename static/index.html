@@ -1172,45 +1172,36 @@ function drawForce() {
     });
     ctx.globalAlpha = 1;
   }
-  // ── Ideal stroke shape (blue) — shape reference, scaled to current peak ───────
+  // ── Blue target: rolling avg of your strokes; Schubschlag shape as fallback ───
   const idealPeak = actualPeak > 0 ? actualPeak : maxN / 1.2;
-  {
-    const ipts = genCurve(idealShape, idealPeak);
-    ctx.fillStyle = 'rgba(74,158,255,0.07)';
-    ctx.fill(curvePath(ipts, true));
-    ctx.strokeStyle = '#4a9eff';
-    ctx.lineWidth   = 1.5;
-    ctx.setLineDash([]);
-    ctx.stroke(curvePath(ipts));
-    ctx.fillStyle = '#4a9eff';
-    ctx.font = '10px -apple-system,sans-serif';
-    ctx.fillText('Ideal shape', xPx(0.40), yPx(idealPeak) - 6);
-  }
-
-  // ── Average of last N strokes (red) ──────────────────────────────────────────
+  let ipts, iLabel;
   if (hist.length >= 2) {
     const N = 32;
     const sum = Array(N).fill(0);
     hist.forEach(curve => {
       if (!Array.isArray(curve) || curve.length < 2) return;
       for (let i = 0; i < N; i++) {
-        const t  = i / (N - 1) * (curve.length - 1);
-        const lo = Math.floor(t), hi = Math.min(lo + 1, curve.length - 1);
-        sum[i]  += curve[lo] + (t - lo) * (curve[hi] - curve[lo]);
+        const tt = i / (N - 1) * (curve.length - 1);
+        const lo = Math.floor(tt), hi = Math.min(lo + 1, curve.length - 1);
+        sum[i]  += curve[lo] + (tt - lo) * (curve[hi] - curve[lo]);
       }
     });
-    const avgPts = sum.map((v, i) => ({ x: xPx(i / (N - 1)), y: yPx(v / hist.length) }));
-    ctx.strokeStyle = '#e53333';
-    ctx.lineWidth   = 1.5;
-    ctx.setLineDash([]);
-    ctx.stroke(curvePath(avgPts, false, 4));
-    const midY = avgPts[16]?.y;
-    if (midY != null) {
-      ctx.fillStyle = '#e53333';
-      ctx.font = '10px -apple-system,sans-serif';
-      ctx.fillText(`Avg ×${hist.length}`, xPx(0.55), midY - 4);
-    }
+    ipts   = sum.map((v, i) => ({ x: xPx(i / (N - 1)), y: yPx(v / hist.length) }));
+    iLabel = `Avg ×${hist.length}`;
+  } else {
+    ipts   = genCurve(idealShape, idealPeak);
+    iLabel = 'Ideal shape';
   }
+  ctx.fillStyle = 'rgba(74,158,255,0.07)';
+  ctx.fill(curvePath(ipts, true));
+  ctx.strokeStyle = '#4a9eff';
+  ctx.lineWidth   = 1.5;
+  ctx.setLineDash([]);
+  ctx.stroke(curvePath(ipts, false, hist.length >= 2 ? 4 : 6));
+  const iPeak = ipts.reduce((b, p) => p.y < b.y ? p : b, ipts[0]);
+  ctx.fillStyle = '#4a9eff';
+  ctx.font = '10px -apple-system,sans-serif';
+  ctx.fillText(iLabel, iPeak.x + 4, iPeak.y - 6);
 
   // Actual drive curve — live samples from CE06003D (partial or full), or beta estimate
   const fcLive = fcData.length > 3;
