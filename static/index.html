@@ -702,8 +702,8 @@ function renderDots() {
 
 // ── Swipe / keyboard handling ─────────────────────────────────────────────────
 document.addEventListener('keydown', e => {
-  if (e.key === 'ArrowRight' && _screen < SCREENS.length - 1) { _screen++; _lastScreen = -1; localStorage.setItem('screen', _screen); }
-  if (e.key === 'ArrowLeft'  && _screen > 0)                  { _screen--; _lastScreen = -1; localStorage.setItem('screen', _screen); }
+  if (e.key === 'ArrowRight' && _screen < SCREENS.length - 1) { _screen++; localStorage.setItem('screen', _screen); renderDots(); renderScreen(); }
+  if (e.key === 'ArrowLeft'  && _screen > 0)                  { _screen--; localStorage.setItem('screen', _screen); renderDots(); renderScreen(); }
 });
 document.getElementById('screen-wrap').addEventListener('touchstart', e => {
   _touchStartX = e.touches[0].clientX;
