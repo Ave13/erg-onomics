@@ -626,6 +626,9 @@ let _active = false, _paused = false;
 let _hrZoneSecs   = [0,0,0,0,0]; // seconds per zone accumulated this session
 let _wasActive    = false;        // previous-tick value; detects session start/end
 let _sessionHrSum = 0, _sessionHrCount = 0; // for session-average HR
+// Pinned force-curve target (persists in localStorage)
+let _fcTarget = null;
+try { _fcTarget = JSON.parse(localStorage.getItem('fc_target')); } catch(_e) {}
 let _resumeId = null;
 let _targetSec = null;
 let _targetRestored = false;
@@ -766,6 +769,15 @@ function renderScreen() {
         _bar.innerHTML = ZONE_COLORS.map((c,i)=>
           `<span style="flex:${_hrZoneSecs[i]/_tot};background:${c}"></span>`
         ).join('');
+      }
+      // Pin button state
+      const _pb = document.getElementById('fc-pin-btn');
+      if (_pb) {
+        const _hasCurve = Array.isArray(_s.force_curve_data) && _s.force_curve_data.length > 3;
+        _pb.textContent  = _fcTarget ? '📌 Pinned · Clear' : '📌 Pin stroke';
+        _pb.style.opacity = (_fcTarget || _hasCurve) ? '1' : '0.35';
+        _pb.style.borderColor = _fcTarget ? '#4a9eff' : 'rgba(255,255,255,0.2)';
+        _pb.style.color = _fcTarget ? '#4a9eff' : 'inherit';
       }
     }
     requestAnimationFrame(drawForce);
@@ -1011,6 +1023,17 @@ function renderTechnique() {
   </div>`;
 }
 
+function toggleFcTarget() {
+  if (_fcTarget) {
+    _fcTarget = null;
+    localStorage.removeItem('fc_target');
+  } else {
+    const d = Array.isArray(_s.force_curve_data) && _s.force_curve_data.length > 3
+      ? _s.force_curve_data.slice() : null;
+    if (d) { _fcTarget = d; localStorage.setItem('fc_target', JSON.stringify(d)); }
+  }
+}
+
 // ── Screen 3: Force Curve + metrics ──────────────────────────────────────────
 function renderForceCurveHTML() {
   const rCls = peakRatioClass();
@@ -1043,7 +1066,14 @@ function renderForceCurveHTML() {
     </div>
     <div id="force-wrap">
       <canvas id="force-canvas"></canvas>
-      <div class="fc-coach" id="fc-coach-lbl"></div>
+      <div class="fc-coach" id="fc-coach-lbl" style="display:flex;justify-content:space-between;align-items:center">
+        <span id="fc-coach-txt"></span>
+        <button id="fc-pin-btn" onclick="toggleFcTarget()"
+          style="font-size:10px;padding:2px 7px;border-radius:6px;border:1px solid rgba(255,255,255,0.2);
+                 background:rgba(255,255,255,0.07);color:inherit;cursor:pointer">
+          📌 Pin stroke
+        </button>
+      </div>
     </div>
   </div>`;
 }
@@ -1172,10 +1202,13 @@ function drawForce() {
     });
     ctx.globalAlpha = 1;
   }
-  // ── Blue target: rolling avg of your strokes; Schubschlag shape as fallback ───
+  // ── Blue target: pinned stroke > rolling avg > Schubschlag fallback ──────────
   const idealPeak = actualPeak > 0 ? actualPeak : maxN / 1.2;
   let ipts, iLabel;
-  if (hist.length >= 2) {
+  if (_fcTarget && _fcTarget.length >= 4) {
+    ipts   = _fcTarget.map((v, i) => ({ x: xPx(i / (_fcTarget.length - 1)), y: yPx(v) }));
+    iLabel = '📌 Target';
+  } else if (hist.length >= 2) {
     const N = 32;
     const sum = Array(N).fill(0);
     hist.forEach(curve => {
