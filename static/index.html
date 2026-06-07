@@ -700,7 +700,11 @@ function renderDots() {
   document.getElementById('screen-label').textContent = SCREENS[_screen];
 }
 
-// ── Swipe handling ────────────────────────────────────────────────────────────
+// ── Swipe / keyboard handling ─────────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.key === 'ArrowRight' && _screen < SCREENS.length - 1) { _screen++; _lastScreen = -1; localStorage.setItem('screen', _screen); }
+  if (e.key === 'ArrowLeft'  && _screen > 0)                  { _screen--; _lastScreen = -1; localStorage.setItem('screen', _screen); }
+});
 document.getElementById('screen-wrap').addEventListener('touchstart', e => {
   _touchStartX = e.touches[0].clientX;
 }, {passive:true});
