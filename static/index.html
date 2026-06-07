@@ -1139,11 +1139,14 @@ function drawForce() {
   });
 
   function idealShape(t) {
-    const rEnd = 0.33, pEnd = 0.52, fEnd = 0.70;
-    if (t <= rEnd) return Math.sin(t / rEnd * Math.PI / 2);
-    if (t <= pEnd) return 1.0 - 0.12 * ((t - rEnd) / (pEnd - rEnd));
-    if (t <= fEnd) return 0.88 * Math.cos((t - pEnd) / (fEnd - pEnd) * Math.PI / 2);
-    return 0;
+    // Schubschlag (Thomas Lange / RP3 benchmark): progressive symmetric build,
+    // peak at midpoint, surging from catch through finish — not front-loaded.
+    const peak = 0.50;  // 50% of drive = mid-stroke peak
+    const end  = 0.72;  // force returns to zero at 72% of stroke cycle
+    if (t >= end) return 0;
+    const u = t / end;
+    if (u <= peak) return Math.pow(u / peak, 0.7);              // progressive rise
+    return Math.pow((1 - u) / (1 - peak), 0.8);                 // gradual decline
   }
   function actualShape(t, ratio) {
     const a = 1.5, b = 1.5 + (1.0 - ratio) * 4.0;
