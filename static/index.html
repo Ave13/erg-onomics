@@ -1109,10 +1109,11 @@ function drawForce() {
   });
 
   function idealShape(t) {
-    const rEnd = 0.33, pEnd = 0.52;
+    const rEnd = 0.33, pEnd = 0.52, fEnd = 0.70;
     if (t <= rEnd) return Math.sin(t / rEnd * Math.PI / 2);
     if (t <= pEnd) return 1.0 - 0.12 * ((t - rEnd) / (pEnd - rEnd));
-    return 0.88 * Math.cos((t - pEnd) / (1 - pEnd) * Math.PI / 2);
+    if (t <= fEnd) return 0.88 * Math.cos((t - pEnd) / (fEnd - pEnd) * Math.PI / 2);
+    return 0;
   }
   function actualShape(t, ratio) {
     const a = 1.5, b = 1.5 + (1.0 - ratio) * 4.0;
